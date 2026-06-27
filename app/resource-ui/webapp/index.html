@@ -39,12 +39,18 @@
     }
     .appTitle { font-size: 15px; font-weight: 700; letter-spacing: 0.3px; color: #fff; }
     .headerActions { display: flex; align-items: center; gap: 10px; }
-    .monthSelect {
-      padding: 5px 10px; border-radius: 20px; border: none;
-      font-size: 13px; cursor: pointer;
-      background: rgba(255,255,255,0.3); color: #fff; outline: none;
+    .viewBtnGroup { display: flex; gap: 2px; }
+    .viewBtn {
+      padding: 5px 12px; border-radius: 0;
+      border: 1.5px solid rgba(255,255,255,0.5);
+      background: rgba(255,255,255,0.15); color: #fff;
+      cursor: pointer; font-size: 12px; font-weight: 500;
+      transition: background 0.15s;
     }
-    .monthSelect option { background: #a78bfa; color: #fff; }
+    .viewBtn:first-child { border-radius: 20px 0 0 20px; }
+    .viewBtn:last-child  { border-radius: 0 20px 20px 0; }
+    .viewBtn.active { background: rgba(255,255,255,0.45); font-weight: 700; }
+    .viewBtn:hover:not(.active) { background: rgba(255,255,255,0.28); }
     .btnHeader {
       padding: 5px 14px; border-radius: 20px;
       border: 1.5px solid rgba(255,255,255,0.5);
@@ -59,7 +65,7 @@
 
     /* ── Panels ── */
     .ganttPanel {
-      flex: 0 0 72%; display: flex; flex-direction: column;
+      flex: 0 0 72%; display: flex; flex-direction: column; position: relative;
       background: var(--surface); border-right: 1.5px solid var(--border); overflow: hidden;
     }
     .chatPanel { flex: 0 0 28%; display: flex; flex-direction: column; background: var(--surface); overflow: hidden; }
@@ -77,8 +83,15 @@
     }
     .legendItem { display: flex; align-items: center; gap: 6px; }
     .legendDot { width: 10px; height: 10px; border-radius: 50%; }
-    .ganttContent { flex: 1; overflow: hidden; padding: 0; min-width: 0; }
+    .ganttContent { flex: 1; overflow: hidden; padding: 0; min-width: 0; position: relative; }
     .gantt-container { height: 100% !important; max-width: 100%; overflow-x: auto; overflow-y: auto; }
+    .ganttNameCol {
+      position: absolute;
+      top: 0; left: 0;
+      width: 150px;
+      pointer-events: none;
+      z-index: 10;
+    }
     .appBody { max-width: 100vw; }
     body { overflow: hidden !important; max-width: 100vw; }
     .freeLabel { font-size: 13px; color: #d8b4fe; padding: 24px; }
@@ -222,8 +235,8 @@
     /* Header */
     .appHeader { background: var(--navy) !important; box-shadow: 0 2px 8px rgba(67,127,199,0.25) !important; }
     .appTitle { color: #fff !important; font-weight: 600 !important; letter-spacing: 0.3px !important; }
-    .monthSelect { background: rgba(255,255,255,0.18) !important; color: #fff !important; border-radius: 5px !important; }
-    .monthSelect option { background: var(--navy) !important; }
+    .viewBtn { border-color: rgba(255,255,255,0.35) !important; }
+    .viewBtn.active { background: rgba(255,255,255,0.35) !important; }
     .btnHeader { background: rgba(255,255,255,0.15) !important; border: 1px solid rgba(255,255,255,0.35) !important; border-radius: 5px !important; color: #fff !important; }
     .btnHeader:hover { background: rgba(255,255,255,0.28) !important; }
 
@@ -314,12 +327,12 @@
   <div class="appHeader">
     <span class="appTitle">Resource Management Agent</span>
     <div class="headerActions">
-      <select id="monthSelector" class="monthSelect">
-        <option value="0">This Month</option>
-        <option value="1">Next Month</option>
-        <option value="2">Next 3 Months</option>
-        <option value="3">Next 6 Months</option>
-      </select>
+      <div class="viewBtnGroup" id="viewBtnGroup">
+        <button class="viewBtn" data-offset="0" onclick="setViewOffset(0)">1M</button>
+        <button class="viewBtn" data-offset="1" onclick="setViewOffset(1)">2M</button>
+        <button class="viewBtn active" data-offset="2" onclick="setViewOffset(2)">3M</button>
+        <button class="viewBtn" data-offset="3" onclick="setViewOffset(3)">6M</button>
+      </div>
       <button class="btnHeader" onclick="openManage()">⚙ Manage</button>
       <button class="btnHeader" onclick="loadAll()">↺ Refresh</button>
     </div>
@@ -332,7 +345,10 @@
         <span class="legendItem"><span class="legendDot" style="background:#437FC7"></span>Active (on project)</span>
         <span class="legendItem"><span class="legendDot" style="background:#F3F33B"></span>Booked (not started)</span>
       </div>
-      <div id="ganttContent" class="ganttContent"><svg id="ganttSvg"></svg></div>
+      <div id="ganttContent" class="ganttContent">
+        <svg id="ganttSvg"></svg>
+      </div>
+      <canvas id="ganttNameCanvas" class="ganttNameCol"></canvas>
     </div>
     <div class="chatPanel">
       <div class="panelTitle">
@@ -383,7 +399,17 @@
     let currentTab = 'employees';
     let formMode = null, formRecord = null;
 
-    document.getElementById("monthSelector").onchange = () => { renderGantt(); };
+    let currentViewOffset = 2;
+
+    function setViewOffset(offset) {
+      currentViewOffset = offset;
+      document.querySelectorAll('.viewBtn').forEach(btn => {
+        btn.classList.toggle('active', parseInt(btn.dataset.offset) === offset);
+      });
+      renderGantt();
+    }
+
+    document.getElementById("monthSelector")?.remove();
 
     let employeeSkillsMap = {};  // employeeId -> [{skillId, level}]
 
@@ -437,12 +463,21 @@
 
       ganttContent.innerHTML = '<div style="padding:8px 16px;height:100%;box-sizing:border-box"><svg id="ganttSvg"></svg></div>';
 
-      const viewMap = { 0: 'Month', 1: 'Month', 2: 'Week', 3: 'Week' };
-      const offset = parseInt(document.getElementById('monthSelector').value || '0');
+      const viewMap = { 0: 'Day', 1: 'Week', 2: 'Month', 3: 'Month' };
+      const viewMode = viewMap[currentViewOffset] || 'Day';
 
-      window._gantt = new Gantt('#ganttSvg', tasks, {
-        view_mode: viewMap[offset] || 'Month',
+      // 裁掉早于今年1月1日的 start，让甘特图不往过去延伸
+      const yearStart = new Date().getFullYear() + '-01-01';
+      const clippedTasks = tasks.map(t => ({
+        ...t,
+        start: t.start < yearStart ? yearStart : t.start
+      }));
+
+      window._gantt = new Gantt('#ganttSvg', clippedTasks, {
+        view_mode: viewMode,
         date_format: 'YYYY-MM-DD',
+        infinite_padding: false,
+        scroll_to: 'today',
         on_click: () => {},
         on_date_change: () => {},
         on_progress_change: () => {},
@@ -453,20 +488,80 @@
       setTimeout(() => {
         const container = document.querySelector('.gantt-container');
         if (!container) return;
-        const svgW = parseFloat(document.querySelector('.gantt-container svg')?.getAttribute('width') || 0);
         const todayLine = document.querySelector('.gantt .today-highlight');
         if (todayLine) {
           const x = parseFloat(todayLine.getAttribute('x') || 0);
           container.scrollLeft = Math.max(0, x - container.offsetWidth * 0.3);
         } else {
-          // 滚到第一个 bar 位置
           const firstBar = document.querySelector('.bar-wrapper .bar');
           if (firstBar) {
             const x = parseFloat(firstBar.getAttribute('x') || 0);
             container.scrollLeft = Math.max(0, x - 60);
           }
         }
+
+        // 在 SVG 左侧固定渲染员工名
+        _renderGanttLabels(tasks);
       }, 150);
+    }
+
+    function _renderGanttLabels(taskList) {
+      const container = document.querySelector('.gantt-container');
+      const canvas    = document.getElementById('ganttNameCanvas');
+      const ganttContent = document.getElementById('ganttContent');
+      if (!container || !canvas || !ganttContent) return;
+
+      const bars = container.querySelectorAll('.bar-wrapper rect.bar');
+      if (!bars.length) return;
+
+      const firstBarY = parseFloat(bars[0].getAttribute('y'));  // header 高度，通常 94px
+
+      // canvas 从 ganttPanel 顶部定位，top 对齐到 ganttContent 起点 + header 偏移
+      const panelTop    = canvas.offsetParent?.getBoundingClientRect().top || 0;
+      const contentTop  = ganttContent.getBoundingClientRect().top;
+      canvas.style.top  = (contentTop - panelTop + firstBarY) + 'px';
+
+      const W = 150, DPR = window.devicePixelRatio || 1;
+      const visH = ganttContent.clientHeight - firstBarY;  // 可见高度去掉 header
+
+      canvas.width       = W * DPR;
+      canvas.height      = visH * DPR;
+      canvas.style.width  = W + 'px';
+      canvas.style.height = visH + 'px';
+
+      function draw(scrollTop) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.save();
+        ctx.scale(DPR, DPR);
+
+        bars.forEach((bar, i) => {
+          const absY = parseFloat(bar.getAttribute('y'));   // y 相对整个 SVG
+          const h    = parseFloat(bar.getAttribute('height') || 30);
+          const drawY = absY - firstBarY - scrollTop;       // 相对 canvas 顶部的绘制 y
+
+          if (drawY + h < 0 || drawY > visH) return;       // 不在视口内跳过
+
+          const name = taskList[i]?.name?.split(' — ')[0] || '';
+
+          ctx.fillStyle = 'rgba(237,246,255,0.96)';
+          ctx.fillRect(0, drawY - 2, W, h + 4);
+
+          ctx.fillStyle = '#1a3a5c';
+          ctx.font = '600 12px "Segoe UI", Arial, sans-serif';
+          ctx.textBaseline = 'middle';
+
+          let label = name;
+          while (label.length > 1 && ctx.measureText(label + '…').width > W - 16) label = label.slice(0, -1);
+          if (label !== name) label += '…';
+          ctx.fillText(label, 10, drawY + h / 2);
+        });
+
+        ctx.restore();
+      }
+
+      draw(container.scrollTop);
+      container.onscroll = () => draw(container.scrollTop);
     }
 
     // ── Chat ─────────────────────────────────────────────────────────────────
