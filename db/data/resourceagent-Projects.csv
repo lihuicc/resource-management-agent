@@ -1,0 +1,16 @@
+ID,name,description,startDate,endDate,status
+p01,Alpha Portal,Customer portal rebuild with React and Node.js,2026-01-01,2026-08-31,active
+p02,SAP Migration,Migrate legacy ERP to SAP S/4HANA on BTP,2025-11-01,2026-09-30,active
+p03,Data Platform,Build internal analytics platform with Python and PostgreSQL,2026-02-01,2026-07-31,active
+p04,Mobile App,Cross-platform mobile app using React Native and TypeScript,2026-03-01,2026-09-30,active
+p05,Cloud Infra,Kubernetes-based cloud infrastructure modernization,2026-01-15,2026-07-15,active
+p06,CAP Services,SAP CAP microservices for procurement domain,2026-02-01,2026-10-31,active
+p07,AI Dashboard,AI-powered analytics dashboard for sales team using Python,2026-03-15,2026-11-30,active
+p08,ABAP Refactor,Refactor legacy ABAP codebase to modern standards,2026-04-01,2026-09-30,active
+p09,BTP Integration,Integration platform on SAP BTP using CAP and HANA,2026-05-01,2026-12-31,active
+p10,DevOps Pipeline,CI/CD pipeline setup with Docker and Kubernetes,2026-04-15,2026-10-31,active
+p11,React Design System,Build reusable component library with React and TypeScript,2026-06-01,2026-11-30,booked
+p12,HANA Analytics,Real-time analytics using SAP HANA Cloud and BTP,2026-07-01,2026-12-31,booked
+p13,Java Backend,High-performance Java backend for logistics platform,2026-08-01,2027-01-31,booked
+p14,Vue Frontend,Vue.js frontend for HR self-service portal,2026-09-01,2027-02-28,booked
+p15,Python ML Pipeline,Machine learning pipeline for demand forecasting,2026-10-01,2027-03-31,open

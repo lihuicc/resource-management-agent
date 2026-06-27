@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Resource Management Agent</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@1.2.2/dist/frappe-gantt.css">
+  <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@1.2.2/dist/frappe-gantt.umd.js"></script>
+  <style>
+    :root {
+      --mac-pink:    #f9a8d4;   /* 草莓粉 */
+      --mac-purple:  #c4b5fd;   /* 薰衣草紫 */
+      --mac-blue:    #93c5fd;   /* 天蓝 */
+      --mac-mint:    #6ee7b7;   /* 薄荷绿 */
+      --mac-yellow:  #fde68a;   /* 香草黄 */
+      --mac-peach:   #fdba74;   /* 蜜桃橙 */
+      --mac-lilac:   #e9d5ff;   /* 淡丁香 */
+      --mac-sky:     #bae6fd;   /* 浅空蓝 */
+
+      --bg:          #fdf4ff;   /* 全局底色：极浅玫瑰白 */
+      --surface:     #ffffff;
+      --border:      #f0e6fa;
+      --text:        #4a3f5c;   /* 深紫灰文字 */
+      --muted:       #9d8fb0;
+      --header-from: #f0abfc;   /* header 渐变起 */
+      --header-to:   #a78bfa;   /* header 渐变止 */
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; font-family: 'Segoe UI', Arial, sans-serif; font-size: 14px; background: var(--bg); color: var(--text); }
+
+    /* ── Header ── */
+    .appHeader {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px; height: 52px;
+      background: linear-gradient(135deg, var(--header-from) 0%, var(--header-to) 100%);
+      color: #fff; flex-shrink: 0;
+      box-shadow: 0 2px 12px rgba(167,139,250,0.25);
+    }
+    .appTitle { font-size: 15px; font-weight: 700; letter-spacing: 0.3px; color: #fff; }
+    .headerActions { display: flex; align-items: center; gap: 10px; }
+    .monthSelect {
+      padding: 5px 10px; border-radius: 20px; border: none;
+      font-size: 13px; cursor: pointer;
+      background: rgba(255,255,255,0.3); color: #fff; outline: none;
+    }
+    .monthSelect option { background: #a78bfa; color: #fff; }
+    .btnHeader {
+      padding: 5px 14px; border-radius: 20px;
+      border: 1.5px solid rgba(255,255,255,0.5);
+      background: rgba(255,255,255,0.2); color: #fff;
+      cursor: pointer; font-size: 13px; font-weight: 500;
+      transition: background 0.15s;
+    }
+    .btnHeader:hover { background: rgba(255,255,255,0.35); }
+
+    /* ── Body ── */
+    .appBody { display: flex; height: calc(100vh - 52px); overflow: hidden; }
+
+    /* ── Panels ── */
+    .ganttPanel {
+      flex: 0 0 72%; display: flex; flex-direction: column;
+      background: var(--surface); border-right: 1.5px solid var(--border); overflow: hidden;
+    }
+    .chatPanel { flex: 0 0 28%; display: flex; flex-direction: column; background: var(--surface); overflow: hidden; }
+    .panelTitle {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 16px; font-size: 11px; font-weight: 700;
+      letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted);
+      border-bottom: 1.5px solid var(--border); flex-shrink: 0;
+      background: linear-gradient(90deg, #fdf4ff 0%, #f5f0ff 100%);
+    }
+    .legendBar {
+      display: flex; gap: 20px; padding: 6px 16px; font-size: 11px;
+      color: var(--muted); border-bottom: 1.5px solid var(--border); flex-shrink: 0;
+      background: linear-gradient(90deg, #fdf4ff 0%, #f5f0ff 100%);
+    }
+    .legendItem { display: flex; align-items: center; gap: 6px; }
+    .legendDot { width: 10px; height: 10px; border-radius: 50%; }
+    .ganttContent { flex: 1; overflow: hidden; padding: 0; min-width: 0; }
+    .gantt-container { height: 100% !important; max-width: 100%; overflow-x: auto; overflow-y: auto; }
+    .appBody { max-width: 100vw; }
+    body { overflow: hidden !important; max-width: 100vw; }
+    .freeLabel { font-size: 13px; color: #d8b4fe; padding: 24px; }
+
+    /* ── Frappe Gantt 马卡龙风格 ── */
+    .gantt-container {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      --g-header-background: #fdf4ff;
+      --g-row-color: #ffffff;
+      --g-border-color: #f0e6fa;
+      --g-tick-color: #f0e6fa;
+      --g-tick-color-thick: #e9d5ff;
+      --g-row-border-color: #f0e6fa;
+      --g-text-muted: #9d8fb0;
+      --g-text-dark: #4a3f5c;
+      --g-today-highlight: #f0abfc;
+      --g-bar-color: #93c5fd;
+      --g-bar-border: #93c5fd;
+      --g-progress-color: rgba(255,255,255,0);
+      --g-weekend-highlight-color: #fdf4ff;
+      --g-actions-background: #f5f0ff;
+    }
+    .gantt .bar-wrapper.status-active { --g-bar-color: #86efac; --g-bar-border: #86efac; }
+    .gantt .bar-wrapper.status-booked { --g-bar-color: #f9a8d4; --g-bar-border: #f9a8d4; }
+    .gantt .bar-label { fill: #4a3f5c !important; font-size: 11px !important; font-weight: 600 !important; }
+    .gantt .bar-label.big { fill: #4a3f5c !important; }
+
+    /* ── Chat ── */
+    .chatMessages {
+      flex: 1; overflow-y: auto; padding: 14px 16px;
+      display: flex; flex-direction: column; gap: 10px;
+      background: linear-gradient(180deg, #fdf4ff 0%, #f5f0ff 100%);
+    }
+    .chatInputBar {
+      display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+      border-top: 1.5px solid var(--border); flex-shrink: 0; background: #fff;
+    }
+    .chatInput {
+      flex: 1; padding: 9px 14px; border: 1.5px solid var(--border);
+      border-radius: 20px; font-size: 13px; outline: none;
+      background: #fdf4ff; color: var(--text); transition: border 0.15s, background 0.15s;
+    }
+    .chatInput:focus { border-color: var(--mac-purple); background: #fff; }
+    .btnSend {
+      padding: 9px 18px;
+      background: linear-gradient(135deg, var(--mac-pink) 0%, var(--mac-purple) 100%);
+      color: #fff; border: none; border-radius: 20px;
+      cursor: pointer; font-size: 13px; font-weight: 600;
+      box-shadow: 0 2px 8px rgba(196,181,253,0.4);
+      transition: opacity 0.15s;
+    }
+    .btnSend:hover { opacity: 0.88; }
+    .btnClear {
+      font-size: 11px; padding: 3px 10px;
+      border: 1.5px solid var(--border); border-radius: 12px;
+      cursor: pointer; background: #fff; color: var(--muted);
+    }
+    .btnClear:hover { background: #fdf4ff; }
+    .msgRow { display: flex; }
+    .msgRowUser  { justify-content: flex-end; }
+    .msgRowAgent { justify-content: flex-start; }
+    .msgBubble { max-width: 82%; padding: 10px 14px; border-radius: 18px; font-size: 13px; line-height: 1.55; word-break: break-word; }
+    .userBubble  {
+      background: linear-gradient(135deg, #f0abfc 0%, #c4b5fd 100%);
+      color: #fff; border-bottom-right-radius: 4px;
+      box-shadow: 0 2px 8px rgba(196,181,253,0.3);
+    }
+    .agentBubble {
+      background: #fff; color: var(--text);
+      border-bottom-left-radius: 4px;
+      border: 1.5px solid var(--border);
+      box-shadow: 0 1px 4px rgba(196,181,253,0.12);
+    }
+
+    /* ── Modal ── */
+    .modal { display: none; position: fixed; inset: 0; background: rgba(74,63,92,0.3); z-index: 100; align-items: center; justify-content: center; backdrop-filter: blur(3px); }
+    .modal.open { display: flex; }
+    .modalBox { background: #fff; border-radius: 16px; width: 900px; max-width: 95vw; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(167,139,250,0.2); border: 1.5px solid var(--border); }
+    .modalHeader { display: flex; align-items: center; justify-content: space-between; padding: 16px 22px; border-bottom: 1.5px solid var(--border); background: linear-gradient(90deg, #fdf4ff 0%, #f5f0ff 100%); border-radius: 16px 16px 0 0; }
+    .modalTitle { font-size: 15px; font-weight: 700; color: var(--text); }
+    .modalClose { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--muted); border-radius: 8px; padding: 2px 7px; }
+    .modalClose:hover { background: #f5f0ff; color: var(--text); }
+    .modalTabs { display: flex; border-bottom: 1.5px solid var(--border); padding: 0 22px; background: #fdf4ff; }
+    .modalTab { padding: 10px 16px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; color: var(--muted); }
+    .modalTab.active { color: #a78bfa; border-bottom-color: #a78bfa; font-weight: 700; }
+    .modalBody { flex: 1; overflow-y: auto; padding: 18px 22px; }
+    .modalFooter { padding: 14px 22px; border-top: 1.5px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; background: #fdf4ff; border-radius: 0 0 16px 16px; }
+
+    /* ── Data table ── */
+    .dataTable { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .dataTable th { text-align: left; padding: 9px 10px; background: #fdf4ff; border-bottom: 2px solid var(--border); font-weight: 700; color: var(--muted); white-space: nowrap; font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase; }
+    .dataTable td { padding: 8px 10px; border-bottom: 1px solid #f5f0ff; vertical-align: middle; }
+    .dataTable tr:hover td { background: #fdf4ff; }
+    .btnAdd { padding: 7px 16px; background: linear-gradient(135deg, #f0abfc 0%, #a78bfa 100%); color: #fff; border: none; border-radius: 20px; cursor: pointer; font-size: 13px; margin-bottom: 12px; font-weight: 600; box-shadow: 0 2px 8px rgba(167,139,250,0.3); }
+    .btnAdd:hover { opacity: 0.88; }
+    .btnIcon { background: none; border: none; cursor: pointer; font-size: 14px; padding: 3px 6px; border-radius: 6px; }
+    .btnIcon:hover { background: #f5f0ff; }
+    .statusBadge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+    .status-active { background: #d1fae5; color: #059669; }
+    .status-booked { background: #fce7f3; color: #db2777; }
+    .status-open   { background: #f5f0ff; color: var(--muted); }
+
+    /* ── Form ── */
+    .formGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 20px; }
+    .formGroup { display: flex; flex-direction: column; gap: 5px; }
+    .formGroup.full { grid-column: 1 / -1; }
+    .formGroup label { font-size: 11px; color: var(--muted); font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
+    .formGroup input, .formGroup select, .formGroup textarea { padding: 8px 12px; border: 1.5px solid var(--border); border-radius: 10px; font-size: 13px; outline: none; background: #fdf4ff; color: var(--text); transition: border 0.15s; }
+    .formGroup input:focus, .formGroup select:focus { border-color: #c4b5fd; background: #fff; }
+    .btnPrimary { padding: 8px 22px; background: linear-gradient(135deg, #f0abfc 0%, #a78bfa 100%); color: #fff; border: none; border-radius: 20px; cursor: pointer; font-size: 13px; font-weight: 600; box-shadow: 0 2px 8px rgba(167,139,250,0.3); }
+    .btnPrimary:hover { opacity: 0.88; }
+    .btnSecondary { padding: 8px 22px; background: #fff; color: var(--text); border: 1.5px solid var(--border); border-radius: 20px; cursor: pointer; font-size: 13px; }
+    .btnSecondary:hover { background: #fdf4ff; }
+    .skillTags { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 0; }
+    .skillTag { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; background: #f5f0ff; color: #a78bfa; border-radius: 12px; font-size: 12px; font-weight: 500; }
+    .skillTag button { background: none; border: none; cursor: pointer; color: #a78bfa; font-size: 13px; padding: 0; }
+
+    /* ── Badge ── */
+    .empBadge { font-size: 10px; padding: 2px 7px; border-radius: 10px; white-space: nowrap; font-weight: 600; }
+    .badge-T1 { background: #f5f0ff; color: #9d8fb0; }
+    .badge-T2 { background: #dbeafe; color: #3b82f6; }
+    .badge-T3 { background: #fce7f3; color: #ec4899; }
+    .badge-T4 { background: #d1fae5; color: #10b981; }
+  </style>
+  <style>
+    /* ══ Blue-Yellow 主题
+       #437FC7 深蓝 · #6DAFFE 亮蓝 · #EDF6FF 极浅蓝 · #FFFFFF 白 · #B9732F 琥珀金
+    */
+    :root {
+      --navy:    #437FC7;
+      --blue:    #6DAFFE;
+      --mist:    #EDF6FF;
+      --amber:   #B9732F;
+      --surface: #ffffff;
+      --border:  #d4e6f8;
+      --text:    #1a3a5c;
+      --muted:   #6a90b8;
+    }
+    html, body { background: var(--mist); color: var(--text); font-family: 'Segoe UI', Arial, sans-serif; }
+
+    /* Header */
+    .appHeader { background: var(--navy) !important; box-shadow: 0 2px 8px rgba(67,127,199,0.25) !important; }
+    .appTitle { color: #fff !important; font-weight: 600 !important; letter-spacing: 0.3px !important; }
+    .monthSelect { background: rgba(255,255,255,0.18) !important; color: #fff !important; border-radius: 5px !important; }
+    .monthSelect option { background: var(--navy) !important; }
+    .btnHeader { background: rgba(255,255,255,0.15) !important; border: 1px solid rgba(255,255,255,0.35) !important; border-radius: 5px !important; color: #fff !important; }
+    .btnHeader:hover { background: rgba(255,255,255,0.28) !important; }
+
+    /* Panels */
+    .ganttPanel, .chatPanel { background: var(--surface) !important; }
+    .ganttPanel { border-right: 1px solid var(--border) !important; }
+    .panelTitle { background: var(--mist) !important; border-bottom: 1px solid var(--border) !important; color: var(--navy) !important; font-weight: 700 !important; letter-spacing: 0.6px !important; }
+    .legendBar  { background: var(--mist) !important; border-bottom: 1px solid var(--border) !important; color: var(--muted) !important; }
+    .legendDot  { border-radius: 3px !important; }
+
+    /* Frappe Gantt */
+    .gantt-container {
+      --g-header-background: #f5faff !important;
+      --g-row-color: #ffffff !important;
+      --g-border-color: #d4e6f8 !important;
+      --g-tick-color: #e2f0fc !important;
+      --g-tick-color-thick: #c8ddf5 !important;
+      --g-row-border-color: #e2f0fc !important;
+      --g-text-muted: #6a90b8 !important;
+      --g-text-dark: #1a3a5c !important;
+      --g-today-highlight: #437FC7 !important;
+      --g-progress-color: rgba(255,255,255,0) !important;
+      --g-weekend-highlight-color: #f0f7ff !important;
+      --g-actions-background: #daeaf8 !important;
+    }
+    .gantt .bar-wrapper.status-active { --g-bar-color: #437FC7 !important; --g-bar-border: #437FC7 !important; }
+    .gantt .bar-wrapper.status-booked { --g-bar-color: #F3F33B !important; --g-bar-border: #F3F33B !important; }
+    .gantt .bar-label { fill: #fff !important; font-size: 11px !important; font-weight: 600 !important; }
+    .gantt .bar-wrapper.status-booked .bar-label { fill: #5a4a00 !important; }
+
+    /* Chat */
+    .chatMessages { background: var(--mist) !important; }
+    .chatInputBar { border-top: 1px solid var(--border) !important; background: #fff !important; padding: 10px 14px !important; }
+    .chatInput {
+      flex: 1 !important; padding: 9px 14px !important;
+      border: 1.5px solid var(--border) !important;
+      border-radius: 20px !important; font-size: 13px !important;
+      outline: none !important; background: var(--mist) !important;
+      color: var(--text) !important;
+    }
+    .chatInput:focus { border-color: var(--blue) !important; background: #fff !important; }
+    .chatInput::placeholder { color: var(--muted) !important; opacity: 1 !important; }
+    .btnSend { background: var(--navy) !important; border-radius: 20px !important; box-shadow: 0 2px 6px rgba(67,127,199,0.3) !important; color: #fff !important; }
+    .btnSend:hover { background: #3268aa !important; opacity: 1 !important; }
+    .btnClear { border: 1px solid var(--border) !important; color: var(--muted) !important; border-radius: 5px !important; background: #fff !important; }
+    .userBubble  { background: var(--navy) !important; color: #fff !important; }
+    .agentBubble { background: #fff !important; border: 1px solid var(--border) !important; color: var(--text) !important; box-shadow: 0 1px 3px rgba(67,127,199,0.08) !important; }
+
+    /* Modal */
+    .modal { background: rgba(26,58,92,0.3) !important; }
+    .modalBox { border: 1px solid var(--border) !important; box-shadow: 0 16px 48px rgba(67,127,199,0.15) !important; border-radius: 12px !important; }
+    .modalHeader, .modalFooter { background: var(--mist) !important; border-color: var(--border) !important; }
+    .modalTabs { background: var(--mist) !important; border-bottom-color: var(--border) !important; }
+    .modalTab.active { color: var(--navy) !important; border-bottom-color: var(--navy) !important; }
+    .modalClose:hover { background: #daeaf8 !important; }
+
+    /* Table */
+    .dataTable th { background: var(--mist) !important; border-bottom: 2px solid var(--border) !important; color: var(--muted) !important; }
+    .dataTable td { border-bottom: 1px solid #eaf3fc !important; }
+    .dataTable tr:hover td { background: #f0f7ff !important; }
+    .btnAdd { background: var(--navy) !important; border-radius: 6px !important; }
+    .btnAdd:hover { background: #3268aa !important; opacity: 1 !important; }
+    .btnIcon:hover { background: #daeaf8 !important; }
+    .status-active { background: #daeaf8 !important; color: #2a5fa0 !important; }
+    .status-booked { background: #f5e6d8 !important; color: #8a4a18 !important; }
+    .status-open   { background: var(--mist) !important; color: var(--muted) !important; }
+
+    /* Form */
+    .formGroup label { color: var(--muted) !important; text-transform: uppercase !important; font-size: 11px !important; letter-spacing: 0.4px !important; }
+    .formGroup input, .formGroup select, .formGroup textarea { border: 1px solid var(--border) !important; background: var(--mist) !important; color: var(--text) !important; border-radius: 6px !important; }
+    .formGroup input:focus, .formGroup select:focus { border-color: var(--blue) !important; background: #fff !important; }
+    .btnPrimary   { background: var(--navy) !important; border-radius: 6px !important; }
+    .btnPrimary:hover { background: #3268aa !important; opacity: 1 !important; }
+    .btnSecondary { border: 1px solid var(--border) !important; color: var(--text) !important; border-radius: 6px !important; }
+    .btnSecondary:hover { background: var(--mist) !important; }
+    .skillTag { background: #daeaf8 !important; color: var(--navy) !important; border-radius: 10px !important; }
+
+    /* Badge */
+    .empBadge { border-radius: 4px !important; }
+    .badge-T1 { background: var(--mist) !important; color: var(--muted) !important; }
+    .badge-T2 { background: #c8ddf5 !important; color: #2a5fa0 !important; }
+    .badge-T3 { background: #f5e6d8 !important; color: #8a4a18 !important; }
+    .badge-T4 { background: #d4f0da !important; color: #2a6e42 !important; }
+  </style>
+</head>
+<body>
+
+  <div class="appHeader">
+    <span class="appTitle">Resource Management Agent</span>
+    <div class="headerActions">
+      <select id="monthSelector" class="monthSelect">
+        <option value="0">This Month</option>
+        <option value="1">Next Month</option>
+        <option value="2">Next 3 Months</option>
+        <option value="3">Next 6 Months</option>
+      </select>
+      <button class="btnHeader" onclick="openManage()">⚙ Manage</button>
+      <button class="btnHeader" onclick="loadAll()">↺ Refresh</button>
+    </div>
+  </div>
+
+  <div class="appBody">
+    <div class="ganttPanel">
+      <div class="panelTitle">Team Timeline</div>
+      <div class="legendBar">
+        <span class="legendItem"><span class="legendDot" style="background:#437FC7"></span>Active (on project)</span>
+        <span class="legendItem"><span class="legendDot" style="background:#F3F33B"></span>Booked (not started)</span>
+      </div>
+      <div id="ganttContent" class="ganttContent"><svg id="ganttSvg"></svg></div>
+    </div>
+    <div class="chatPanel">
+      <div class="panelTitle">
+        Agent Chat
+        <button class="btnClear" onclick="clearChat()">Clear</button>
+      </div>
+      <div id="chatMessages" class="chatMessages"></div>
+      <div class="chatInputBar">
+        <input id="chatInput" class="chatInput" placeholder="e.g. Who is free next month for a React project?" />
+        <button class="btnSend" onclick="sendMessage()">Send ▶</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Manage Modal ── -->
+  <div class="modal" id="manageModal">
+    <div class="modalBox">
+      <div class="modalHeader">
+        <span class="modalTitle">Manage Data</span>
+        <button class="modalClose" onclick="closeManage()">×</button>
+      </div>
+      <div class="modalTabs">
+        <div class="modalTab active" onclick="switchTab('employees')">Employees</div>
+        <div class="modalTab" onclick="switchTab('projects')">Projects</div>
+      </div>
+      <div class="modalBody" id="modalBody"></div>
+    </div>
+  </div>
+
+  <!-- ── Record Form Modal ── -->
+  <div class="modal" id="formModal">
+    <div class="modalBox" style="width:500px">
+      <div class="modalHeader">
+        <span class="modalTitle" id="formTitle">Add Record</span>
+        <button class="modalClose" onclick="closeForm()">×</button>
+      </div>
+      <div class="modalBody" id="formBody"></div>
+      <div class="modalFooter">
+        <button class="btnSecondary" onclick="closeForm()">Cancel</button>
+        <button class="btnPrimary" onclick="submitForm()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let employees = [], assignments = [], projects = [], skills = [];
+    let conversationHistory = [];
+    let currentTab = 'employees';
+    let formMode = null, formRecord = null;
+
+    document.getElementById("monthSelector").onchange = () => { renderGantt(); };
+
+    let employeeSkillsMap = {};  // employeeId -> [{skillId, level}]
+
+    async function loadAll() {
+      const [e, a, p, s, es] = await Promise.all([
+        fetch("/api/Employees?$orderby=name").then(r => r.json()),
+        fetch("/api/Assignments").then(r => r.json()),
+        fetch("/api/Projects?$orderby=name").then(r => r.json()),
+        fetch("/api/Skills?$orderby=name").then(r => r.json()),
+        fetch("/api/EmployeeSkills").then(r => r.json())
+      ]);
+      employees   = e.value || [];
+      assignments = a.value || [];
+      projects    = p.value || [];
+      skills      = s.value || [];
+      employeeSkillsMap = {};
+      (es.value || []).forEach(row => {
+        if (!employeeSkillsMap[row.employeeId]) employeeSkillsMap[row.employeeId] = [];
+        employeeSkillsMap[row.employeeId].push(row);
+      });
+      renderGantt();
+    }
+
+    // ── Gantt ─────────────────────────────────────────────────────────────────
+    function renderGantt() {
+      const tasks = [];
+      employees.forEach(emp => {
+        assignments.filter(a => a.employeeId === emp.ID).forEach(a => {
+          const proj = projects.find(p => p.ID === a.projectId);
+          if (!proj || proj.status === 'open') return;
+          const start = a.startDate;
+          const end   = a.endDate;
+          if (!start || !end || start >= end) return;
+          tasks.push({
+            id: a.ID,
+            name: emp.name + ' — ' + proj.name,
+            start: start,
+            end: end,
+            progress: 0,
+            custom_class: 'status-' + proj.status
+          });
+        });
+      });
+
+      const ganttContent = document.getElementById('ganttContent');
+
+      if (!tasks.length) {
+        ganttContent.innerHTML = '<div class="freeLabel">No assignments in this period</div>';
+        return;
+      }
+
+      ganttContent.innerHTML = '<div style="padding:8px 16px;height:100%;box-sizing:border-box"><svg id="ganttSvg"></svg></div>';
+
+      const viewMap = { 0: 'Month', 1: 'Month', 2: 'Week', 3: 'Week' };
+      const offset = parseInt(document.getElementById('monthSelector').value || '0');
+
+      window._gantt = new Gantt('#ganttSvg', tasks, {
+        view_mode: viewMap[offset] || 'Month',
+        date_format: 'YYYY-MM-DD',
+        on_click: () => {},
+        on_date_change: () => {},
+        on_progress_change: () => {},
+        on_view_change: () => {}
+      });
+
+      // 滚动到今天左侧留一些余量，让当前任务可见
+      setTimeout(() => {
+        const container = document.querySelector('.gantt-container');
+        if (!container) return;
+        const svgW = parseFloat(document.querySelector('.gantt-container svg')?.getAttribute('width') || 0);
+        const todayLine = document.querySelector('.gantt .today-highlight');
+        if (todayLine) {
+          const x = parseFloat(todayLine.getAttribute('x') || 0);
+          container.scrollLeft = Math.max(0, x - container.offsetWidth * 0.3);
+        } else {
+          // 滚到第一个 bar 位置
+          const firstBar = document.querySelector('.bar-wrapper .bar');
+          if (firstBar) {
+            const x = parseFloat(firstBar.getAttribute('x') || 0);
+            container.scrollLeft = Math.max(0, x - 60);
+          }
+        }
+      }, 150);
+    }
+
+    // ── Chat ─────────────────────────────────────────────────────────────────
+    document.getElementById("chatInput").onkeydown = e => { if (e.key === "Enter") sendMessage(); };
+
+    function sendMessage() {
+      const input = document.getElementById("chatInput");
+      const msg = input.value.trim();
+      if (!msg) return;
+      input.value = "";
+      appendMessage(msg, "user");
+      callAgent(msg);
+    }
+
+    function clearChat() {
+      conversationHistory = [];
+      document.getElementById("chatMessages").innerHTML = "";
+    }
+
+    function appendMessage(text, role, id) {
+      const container = document.getElementById("chatMessages");
+      const div = document.createElement("div");
+      div.className = "msgRow " + (role === "user" ? "msgRowUser" : "msgRowAgent");
+      if (id) div.id = id;
+      div.innerHTML = `<div class="msgBubble ${role === "user" ? "userBubble" : "agentBubble"}">${escHtml(text)}</div>`;
+      container.appendChild(div);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function escHtml(s) {
+      return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>");
+    }
+
+    async function callAgent(message) {
+      const tid = "t" + Date.now();
+      appendMessage("Thinking...", "agent", tid);
+      try {
+        const res = await fetch("/agent/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message, conversationHistory }) });
+        const data = await res.json();
+        document.getElementById(tid)?.remove();
+        if (data.error) { appendMessage("Error: " + data.error, "agent"); }
+        else { conversationHistory = data.messages || []; appendMessage(data.reply, "agent"); if (data.toolsUsed?.some(t => ['createAssignment','updateAssignment','deleteAssignment'].includes(t))) loadAll(); }
+      } catch (err) { document.getElementById(tid)?.remove(); appendMessage("Network error: " + err.message, "agent"); }
+    }
+
+    // ── Manage Modal ──────────────────────────────────────────────────────────
+    function openManage() {
+      document.getElementById("manageModal").classList.add("open");
+      renderTab(currentTab);
+    }
+    function closeManage() { document.getElementById("manageModal").classList.remove("open"); }
+
+    function switchTab(tab) {
+      currentTab = tab;
+      document.querySelectorAll(".modalTab").forEach((el, i) => {
+        el.classList.toggle("active", ["employees","projects"][i] === tab);
+      });
+      renderTab(tab);
+    }
+
+    let expandedProjects = new Set();
+
+    function toggleProjectAssignments(projectId) {
+      if (expandedProjects.has(projectId)) expandedProjects.delete(projectId);
+      else expandedProjects.add(projectId);
+      renderTab('projects');
+    }
+
+    function renderTab(tab) {
+      const body = document.getElementById("modalBody");
+      if (tab === "employees") {
+        body.innerHTML = `<button class="btnAdd" onclick="openForm('employee',null)">+ Add Employee</button>
+          <table class="dataTable">
+            <thead><tr><th>Name</th><th>Email</th><th>Level</th><th>Skills</th><th></th></tr></thead>
+            <tbody>${employees.map(e => `<tr>
+              <td>${e.name}</td><td>${e.email}</td>
+              <td><span class="empBadge badge-${e.seniority}">${e.seniority}</span></td>
+              <td>${(employeeSkillsMap[e.ID] || []).map(es => skills.find(s => s.ID === es.skillId)?.name).filter(Boolean).join(", ") || "—"}</td>
+              <td><button class="btnIcon" title="Edit" onclick="openForm('employee','${e.ID}')">✏️</button>
+                  <button class="btnIcon" title="Delete" onclick="deleteRecord('Employees','${e.ID}')">🗑️</button></td>
+            </tr>`).join("")}</tbody>
+          </table>`;
+      } else if (tab === "projects") {
+        const rows = projects.map(p => {
+          const projAssignments = assignments.filter(a => a.projectId === p.ID);
+          const isExpanded = expandedProjects.has(p.ID);
+          const assignmentRows = isExpanded ? `
+            <tr>
+              <td colspan="6" style="padding:0;background:#fafafa">
+                <div style="padding:8px 16px 8px 32px">
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+                    <span style="font-size:12px;font-weight:600;color:#555">Assignments (${projAssignments.length})</span>
+                    <button class="btnAdd" style="margin:0;padding:4px 10px;font-size:12px" onclick="openForm('assignment',null,'${p.ID}')">+ Add</button>
+                  </div>
+                  ${projAssignments.length ? `
+                  <table style="width:100%;border-collapse:collapse;font-size:12px">
+                    <thead><tr style="background:#f0f0f0">
+                      <th style="padding:5px 8px;text-align:left;color:#555">Employee</th>
+                      <th style="padding:5px 8px;text-align:left;color:#555">Level</th>
+                      <th style="padding:5px 8px;text-align:left;color:#555">Start</th>
+                      <th style="padding:5px 8px;text-align:left;color:#555">End</th>
+                      <th style="padding:5px 8px"></th>
+                    </tr></thead>
+                    <tbody>${projAssignments.map(a => {
+                      const emp = employees.find(e => e.ID === a.employeeId);
+                      return `<tr style="border-bottom:1px solid #eee">
+                        <td style="padding:5px 8px">${emp?.name || a.employeeId}</td>
+                        <td style="padding:5px 8px"><span class="empBadge badge-${emp?.seniority}">${emp?.seniority || '—'}</span></td>
+                        <td style="padding:5px 8px">${a.startDate}</td>
+                        <td style="padding:5px 8px">${a.endDate}</td>
+                        <td style="padding:5px 8px">
+                          <button class="btnIcon" title="Edit" onclick="openForm('assignment','${a.ID}')">✏️</button>
+                          <button class="btnIcon" title="Delete" onclick="deleteRecord('Assignments','${a.ID}')">🗑️</button>
+                        </td>
+                      </tr>`;
+                    }).join('')}</tbody>
+                  </table>` : '<span style="font-size:12px;color:#aaa">No assignments yet</span>'}
+                </div>
+              </td>
+            </tr>` : '';
+          return `
+            <tr style="cursor:pointer" onclick="toggleProjectAssignments('${p.ID}')">
+              <td style="padding:7px 10px">
+                <span style="margin-right:6px;font-size:11px;color:#888">${isExpanded ? '▼' : '▶'}</span>${p.name}
+              </td>
+              <td><span class="statusBadge status-${p.status}">${p.status}</span></td>
+              <td>${p.startDate}</td><td>${p.endDate}</td>
+              <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#888;font-size:12px" title="${p.description||''}">${p.description||'—'}</td>
+              <td onclick="event.stopPropagation()">
+                <button class="btnIcon" title="Edit" onclick="openForm('project','${p.ID}')">✏️</button>
+                <button class="btnIcon" title="Delete" onclick="deleteRecord('Projects','${p.ID}')">🗑️</button>
+              </td>
+            </tr>
+            ${assignmentRows}`;
+        }).join('');
+        body.innerHTML = `<button class="btnAdd" onclick="openForm('project',null)">+ Add Project</button>
+          <table class="dataTable">
+            <thead><tr><th>Name</th><th>Status</th><th>Start</th><th>End</th><th>Description</th><th></th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>`;
+      }
+    }
+
+    // ── Form Modal ────────────────────────────────────────────────────────────
+    let empSkillsCache = {};  // employeeId -> [{skillId, level}]
+
+    async function openForm(type, id, defaultProjectId) {
+      formMode = type;
+      formRecord = id ? (type === "employee" ? employees.find(e => e.ID === id) : type === "project" ? projects.find(p => p.ID === id) : assignments.find(a => a.ID === id)) : null;
+      const isEdit = !!formRecord;
+      document.getElementById("formTitle").textContent = (isEdit ? "Edit " : "Add ") + type.charAt(0).toUpperCase() + type.slice(1);
+
+      // Pre-load employee skills for edit — use in-memory map (OData rejects non-UUID IDs)
+      if (type === "employee" && isEdit) {
+        empSkillsCache[formRecord.ID] = employeeSkillsMap[formRecord.ID] || [];
+      }
+
+      document.getElementById("formBody").innerHTML = buildForm(type, formRecord, defaultProjectId);
+      document.getElementById("formModal").classList.add("open");
+    }
+    function closeForm() { document.getElementById("formModal").classList.remove("open"); }
+
+    function buildForm(type, rec, defaultProjectId) {
+      if (type === "employee") {
+        const existingSkills = (rec && empSkillsCache[rec.ID]) || [];
+        const skillRows = skills.map(s => {
+          const existing = existingSkills.find(es => es.skillId === s.ID);
+          return `<tr>
+            <td style="padding:4px 8px">
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                <input type="checkbox" data-skill-id="${s.ID}" ${existing ? 'checked' : ''} onchange="toggleSkillLevel('${s.ID}')"/>
+                ${s.name}
+              </label>
+            </td>
+            <td style="padding:4px 8px">
+              <select id="sl_${s.ID}" ${!existing ? 'disabled style="opacity:0.4"' : ''}>
+                ${[1,2,3,4,5].map(l => `<option value="${l}" ${existing?.level==l?'selected':''}>${l}</option>`).join("")}
+              </select>
+            </td>
+          </tr>`;
+        }).join("");
+
+        return `<div class="formGrid" style="padding:4px 0 12px">
+          <div class="formGroup"><label>Name</label><input id="f_name" value="${rec?.name||''}"/></div>
+          <div class="formGroup"><label>Email</label><input id="f_email" value="${rec?.email||''}"/></div>
+          <div class="formGroup"><label>Level</label>
+            <select id="f_seniority">
+              ${["T1","T2","T3","T4"].map(t => `<option value="${t}" ${rec?.seniority===t?'selected':''}>${t}</option>`).join("")}
+            </select>
+          </div>
+        </div>
+        <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px">Skills</div>
+        <div style="max-height:220px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:5px">
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead><tr style="background:#f5f5f5">
+              <th style="padding:6px 8px;text-align:left;font-weight:600;color:#555">Skill</th>
+              <th style="padding:6px 8px;text-align:left;font-weight:600;color:#555">Level (1-5)</th>
+            </tr></thead>
+            <tbody>${skillRows}</tbody>
+          </table>
+        </div>`;
+      } else if (type === "project") {
+        return `<div class="formGrid" style="padding:4px 0">
+          <div class="formGroup full"><label>Name</label><input id="f_name" value="${rec?.name||''}"/></div>
+          <div class="formGroup full"><label>Description</label><input id="f_description" value="${rec?.description||''}"/></div>
+          <div class="formGroup"><label>Start Date</label><input id="f_startDate" type="date" value="${rec?.startDate||''}"/></div>
+          <div class="formGroup"><label>End Date</label><input id="f_endDate" type="date" value="${rec?.endDate||''}"/></div>
+          <div class="formGroup"><label>Status</label>
+            <select id="f_status">
+              ${["active","booked","open"].map(s => `<option value="${s}" ${rec?.status===s?'selected':''}>${s}</option>`).join("")}
+            </select>
+          </div>
+        </div>`;
+      } else {
+        const selProjectId = rec?.projectId || defaultProjectId || '';
+        return `<div class="formGrid" style="padding:4px 0">
+          <div class="formGroup full"><label>Employee</label>
+            <select id="f_employeeId">
+              ${employees.map(e => `<option value="${e.ID}" ${rec?.employeeId===e.ID?'selected':''}>${e.name}</option>`).join("")}
+            </select>
+          </div>
+          <div class="formGroup full"><label>Project</label>
+            <select id="f_projectId">
+              ${projects.map(p => `<option value="${p.ID}" ${selProjectId===p.ID?'selected':''}>${p.name}</option>`).join("")}
+            </select>
+          </div>
+          <div class="formGroup"><label>Start Date</label><input id="f_startDate" type="date" value="${rec?.startDate||''}"/></div>
+          <div class="formGroup"><label>End Date</label><input id="f_endDate" type="date" value="${rec?.endDate||''}"/></div>
+        </div>`;
+      }
+    }
+
+    function toggleSkillLevel(skillId) {
+      const cb = document.querySelector(`[data-skill-id="${skillId}"]`);
+      const sel = document.getElementById(`sl_${skillId}`);
+      if (cb && sel) { sel.disabled = !cb.checked; sel.style.opacity = cb.checked ? '1' : '0.4'; }
+    }
+
+    function val(id) { const el = document.getElementById(id); return el ? el.value : ''; }
+
+    async function submitForm() {
+      let url, body;
+      const isEdit = !!formRecord;
+
+      if (formMode === "employee") {
+        body = { name: val("f_name"), email: val("f_email"), seniority: val("f_seniority") };
+        url = isEdit ? `/data/Employees/${formRecord.ID}` : "/data/Employees";
+      } else if (formMode === "project") {
+        body = { name: val("f_name"), description: val("f_description"), startDate: val("f_startDate"), endDate: val("f_endDate"), status: val("f_status") };
+        url = isEdit ? `/data/Projects/${formRecord.ID}` : "/data/Projects";
+      } else {
+        body = { employeeId: val("f_employeeId"), projectId: val("f_projectId"), startDate: val("f_startDate"), endDate: val("f_endDate") };
+        url = isEdit ? `/data/Assignments/${formRecord.ID}` : "/data/Assignments";
+      }
+
+      const method = isEdit ? "PATCH" : "POST";
+      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const resData = res.headers.get("content-type")?.includes("json") ? await res.json() : {};
+      if (!res.ok) {
+        alert("Error: " + (resData.error?.message || JSON.stringify(resData)));
+        return;
+      }
+
+      // Save skills for employee (new or edit)
+      if (formMode === "employee") {
+        const empId = isEdit ? formRecord.ID : resData.ID;
+        const checkedSkills = [];
+        document.querySelectorAll('[data-skill-id]').forEach(cb => {
+          if (cb.checked) {
+            const skillId = cb.dataset.skillId;
+            const level = parseInt(document.getElementById(`sl_${skillId}`)?.value || "1");
+            checkedSkills.push({ skillId, level });
+          }
+        });
+        await fetch(`/data/EmployeeSkills/${empId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ skills: checkedSkills })
+        });
+      }
+
+      closeForm();
+      await loadAll();
+      renderTab(currentTab);
+    }
+
+    async function deleteRecord(entity, id) {
+      if (!confirm("Delete this record?")) return;
+      const res = await fetch(`/data/${entity}/${id}`, { method: "DELETE" });
+      if (res.ok) { await loadAll(); renderTab(currentTab); }
+      else { const err = await res.json(); alert("Error: " + (err.error?.message || JSON.stringify(err))); }
+    }
+
+    // ── Init ─────────────────────────────────────────────────────────────────
+    loadAll();
+  </script>
+</body>
+</html>

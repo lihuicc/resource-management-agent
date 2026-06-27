@@ -1,0 +1,118 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: "72", Arial, sans-serif; font-size: 14px; }
+
+/* ── Shell ────────────────────────────────────────────────────────────────── */
+.appShell { display: flex; flex-direction: column; height: 100vh; }
+
+.appHeader {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 16px; height: 48px; background: #0854a0; color: #fff;
+  flex-shrink: 0;
+}
+.appTitle  { font-size: 16px; font-weight: 600; }
+.headerActions { display: flex; align-items: center; gap: 10px; }
+
+.monthSelect {
+  padding: 4px 8px; border-radius: 4px; border: none;
+  font-size: 13px; cursor: pointer;
+}
+.btnRefresh {
+  padding: 4px 12px; border-radius: 4px; border: none;
+  background: rgba(255,255,255,0.2); color: #fff;
+  cursor: pointer; font-size: 13px;
+}
+.btnRefresh:hover { background: rgba(255,255,255,0.35); }
+
+/* ── Body: two columns ───────────────────────────────────────────────────── */
+.appBody {
+  display: flex; flex: 1; overflow: hidden;
+}
+
+/* ── Gantt (left 60%) ────────────────────────────────────────────────────── */
+.ganttPanel {
+  flex: 0 0 60%; display: flex; flex-direction: column;
+  border-right: 1px solid #e0e0e0; overflow: hidden;
+}
+.ganttContent {
+  flex: 1; overflow-y: auto; padding: 0 12px 12px 12px;
+}
+
+/* ── Chat (right 40%) ────────────────────────────────────────────────────── */
+.chatPanel {
+  flex: 0 0 40%; display: flex; flex-direction: column; overflow: hidden;
+}
+.chatMessages {
+  flex: 1; overflow-y: auto; padding: 12px; display: flex;
+  flex-direction: column; gap: 8px;
+}
+.chatInputBar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-top: 1px solid #e0e0e0; flex-shrink: 0;
+}
+.chatInput {
+  flex: 1; padding: 8px 10px; border: 1px solid #ccc;
+  border-radius: 6px; font-size: 13px; outline: none;
+}
+.chatInput:focus { border-color: #0854a0; }
+.btnSend {
+  padding: 8px 14px; background: #0854a0; color: #fff;
+  border: none; border-radius: 6px; cursor: pointer; font-size: 13px;
+}
+.btnSend:hover { background: #063f80; }
+
+/* ── Panel title ─────────────────────────────────────────────────────────── */
+.panelTitle {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; font-size: 13px; font-weight: 600;
+  border-bottom: 1px solid #e0e0e0; flex-shrink: 0; color: #333;
+}
+.btnClear {
+  font-size: 12px; padding: 2px 8px; border: 1px solid #ccc;
+  border-radius: 4px; cursor: pointer; background: #fff; color: #666;
+}
+.btnClear:hover { background: #f5f5f5; }
+
+/* ── Gantt rows ──────────────────────────────────────────────────────────── */
+.ganttRow {
+  display: flex; align-items: center;
+  padding: 3px 0; border-bottom: 1px solid #f0f0f0; min-height: 30px;
+}
+.ganttLabel {
+  width: 160px; min-width: 160px;
+  display: flex; align-items: center; gap: 5px; padding-right: 8px;
+}
+.empName {
+  font-size: 12px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100px;
+}
+.empBadge {
+  font-size: 10px; padding: 1px 5px; border-radius: 8px; white-space: nowrap;
+}
+.badge-senior { background: #e8f5e9; color: #2e7d32; }
+.badge-mid    { background: #fff3e0; color: #e65100; }
+.badge-junior { background: #e3f2fd; color: #1565c0; }
+
+.ganttTrack {
+  flex: 1; position: relative; height: 20px;
+  background: #f5f5f5; border-radius: 3px; overflow: hidden;
+}
+.ganttBar {
+  position: absolute; height: 100%; top: 0; border-radius: 3px;
+  font-size: 10px; color: #fff;
+  display: flex; align-items: center; padding: 0 4px;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  cursor: pointer; opacity: 0.88; transition: opacity 0.15s;
+}
+.ganttBar:hover { opacity: 1; }
+.freeLabel { font-size: 11px; color: #bbb; padding-left: 6px; line-height: 20px; }
+
+/* ── Chat bubbles ────────────────────────────────────────────────────────── */
+.msgRow { display: flex; }
+.msgRowUser  { justify-content: flex-end; }
+.msgRowAgent { justify-content: flex-start; }
+.msgBubble {
+  max-width: 82%; padding: 9px 13px; border-radius: 12px;
+  font-size: 13px; line-height: 1.5; word-break: break-word;
+}
+.userBubble  { background: #0854a0; color: #fff; border-bottom-right-radius: 3px; }
+.agentBubble { background: #f0f0f0; color: #333; border-bottom-left-radius: 3px; }

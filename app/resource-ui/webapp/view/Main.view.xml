@@ -1,0 +1,14 @@
+<mvc:View
+  controllerName="resource.agent.ui.controller.Main"
+  xmlns:mvc="sap.ui.core.mvc"
+  xmlns="sap.m"
+  xmlns:core="sap.ui.core"
+  displayBlock="true">
+
+  <Page id="page" showHeader="false">
+    <content>
+      <core:HTML id="appLayout" content="&lt;div id='app-shell' class='appShell'&gt;&lt;/div&gt;"/>
+    </content>
+  </Page>
+
+</mvc:View>
