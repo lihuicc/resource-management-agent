@@ -6,7 +6,9 @@
   "dependencies": {
     "@sap/cds": "^9",
     "@anthropic-ai/sdk": "^0.39.0",
-    "express": "^4"
+    "express": "^4",
+    "multer": "^2",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@cap-js/sqlite": "^1"
@@ -19,7 +21,7 @@
     "requires": {
       "db": {
         "kind": "sqlite",
-        "credentials": { "url": ":memory:" }
+        "credentials": { "url": "db/data.db" }
       }
     },
     "watch": {
