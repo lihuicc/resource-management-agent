@@ -21,7 +21,7 @@
     "requires": {
       "db": {
         "kind": "sqlite",
-        "credentials": { "url": ":memory:" }
+        "credentials": { "url": "db/data.db" }
       }
     },
     "watch": {
