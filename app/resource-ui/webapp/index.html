@@ -320,6 +320,27 @@
     .badge-T2 { background: #c8ddf5 !important; color: #2a5fa0 !important; }
     .badge-T3 { background: #f5e6d8 !important; color: #8a4a18 !important; }
     .badge-T4 { background: #d4f0da !important; color: #2a6e42 !important; }
+
+    /* Import Modal */
+    .importDropZone {
+      border: 2px dashed var(--border); border-radius: 10px; padding: 36px 24px;
+      text-align: center; color: var(--muted); cursor: pointer;
+      transition: border-color 0.15s, background 0.15s; background: var(--mist);
+    }
+    .importDropZone:hover, .importDropZone.drag-over { border-color: var(--navy); background: #daeaf8; }
+    .importDropZone p { margin: 8px 0 0; font-size: 13px; }
+    .importMappingTable { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+    .importMappingTable th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); padding: 6px 10px; background: var(--mist); border-bottom: 2px solid var(--border); text-align: left; }
+    .importMappingTable td { padding: 7px 10px; border-bottom: 1px solid var(--border); font-size: 13px; }
+    .importPreviewTable { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
+    .importPreviewTable th { background: var(--mist); padding: 5px 8px; font-weight: 600; color: var(--muted); font-size: 11px; border-bottom: 1px solid var(--border); text-align: left; }
+    .importPreviewTable td { padding: 4px 8px; border-bottom: 1px solid #f0f7ff; color: var(--text); }
+    .importResult { text-align: center; padding: 20px 0; }
+    .importResult .importCount { font-size: 28px; font-weight: 700; color: var(--navy); }
+    .importResult .importBreakdown { font-size: 13px; color: var(--muted); margin: 4px 0 16px; }
+    .importErrorList { max-height: 140px; overflow-y: auto; text-align: left; background: #fff8f0; border: 1px solid #f5e6d8; border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #8a4a18; }
+    .importErrorList li { margin: 3px 0; }
+    .importFooter { display: flex; justify-content: space-between; align-items: center; padding: 14px 22px; border-top: 1.5px solid var(--border); background: var(--mist); border-radius: 0 0 12px 12px; margin: 16px -22px -18px; }
   </style>
 </head>
 <body>
@@ -373,6 +394,7 @@
       <div class="modalTabs">
         <div class="modalTab active" onclick="switchTab('employees')">Employees</div>
         <div class="modalTab" onclick="switchTab('projects')">Projects</div>
+        <div class="modalTab" onclick="switchTab('importexport')">Import / Export</div>
       </div>
       <div class="modalBody" id="modalBody"></div>
     </div>
@@ -617,7 +639,7 @@
     function switchTab(tab) {
       currentTab = tab;
       document.querySelectorAll(".modalTab").forEach((el, i) => {
-        el.classList.toggle("active", ["employees","projects"][i] === tab);
+        el.classList.toggle("active", ["employees","projects","importexport"][i] === tab);
       });
       renderTab(tab);
     }
@@ -702,6 +724,10 @@
             <thead><tr><th>Name</th><th>Status</th><th>Start</th><th>End</th><th>Description</th><th></th></tr></thead>
             <tbody>${rows}</tbody>
           </table>`;
+      } else if (tab === "importexport") {
+        importPreviewData = null;
+        importMapping = {};
+        _renderImportStep1();
       }
     }
 
@@ -853,6 +879,159 @@
       const res = await fetch(`/data/${entity}/${id}`, { method: "DELETE" });
       if (res.ok) { await loadAll(); renderTab(currentTab); }
       else { const err = await res.json(); alert("Error: " + (err.error?.message || JSON.stringify(err))); }
+    }
+
+    // ── Import / Export tab ───────────────────────────────────────────────────
+    let importPreviewData = null;
+    let importMapping = {};
+
+    const IMPORT_FIELD_LABELS = {
+      name: 'Employee Name', email: 'Email', seniority: 'Seniority', skills: 'Skills'
+    };
+
+    function _importBody() { return document.getElementById('modalBody'); }
+
+    function _renderImportStep1() {
+      _importBody().innerHTML = `
+        <div style="margin-bottom:18px">
+          <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px">Import Employees</div>
+          <div class="importDropZone" id="importDropZone"
+            onclick="document.getElementById('importFileInput').click()"
+            ondragover="event.preventDefault();this.classList.add('drag-over')"
+            ondragleave="this.classList.remove('drag-over')"
+            ondrop="event.preventDefault();this.classList.remove('drag-over');_handleImportFile(event.dataTransfer.files[0])">
+            <div style="font-size:32px">📂</div>
+            <p>Drag &amp; drop an <strong>.xlsx</strong> file here</p>
+            <p style="margin-top:10px"><button class="btnSecondary" style="pointer-events:none">Browse file</button></p>
+          </div>
+          <input type="file" id="importFileInput" accept=".xlsx,.xls" style="display:none"
+            onchange="_handleImportFile(this.files[0])"/>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:18px">
+          <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px">Export Employees</div>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Download all employees and their skills as an Excel file.</p>
+          <button class="btnPrimary" onclick="_exportEmployees()">⬇ Download Excel</button>
+        </div>`;
+    }
+
+    async function _handleImportFile(file) {
+      if (!file) return;
+      const zone = document.getElementById('importDropZone');
+      if (zone) zone.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:12px 0">Uploading…</div>';
+      const form = new FormData();
+      form.append('file', file);
+      try {
+        const res = await fetch('/data/import/preview', { method: 'POST', body: form });
+        const data = await res.json();
+        if (!res.ok) { alert('Preview failed: ' + data.error); _renderImportStep1(); return; }
+        importPreviewData = data;
+        importMapping = { ...data.suggestedMapping };
+        _renderImportStep2();
+      } catch (err) {
+        alert('Upload error: ' + err.message);
+        _renderImportStep1();
+      }
+    }
+
+    function _renderImportStep2() {
+      const { columns, sampleRows, suggestedMapping } = importPreviewData;
+
+      const mappingRows = columns.map(col => {
+        const suggested = suggestedMapping[col] || '';
+        const opts = ['<option value="">(ignore)</option>',
+          ...Object.entries(IMPORT_FIELD_LABELS).map(([v, l]) =>
+            `<option value="${v}"${suggested === v ? ' selected' : ''}>${l}</option>`)
+        ].join('');
+        return `<tr>
+          <td style="font-weight:600">${escHtml(col)}</td>
+          <td style="color:var(--muted)">→</td>
+          <td><select data-import-col="${escHtml(col)}"
+            onchange="importMapping[this.dataset.importCol]=this.value||null"
+            style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:13px;background:var(--mist);color:var(--text)">${opts}</select></td>
+        </tr>`;
+      }).join('');
+
+      const previewHeaders = columns.map(c => `<th>${escHtml(c)}</th>`).join('');
+      const previewBodyRows = sampleRows.slice(0, 3).map(r =>
+        `<tr>${r.map(cell => `<td>${escHtml(String(cell))}</td>`).join('')}</tr>`
+      ).join('');
+
+      _importBody().innerHTML = `
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:12px">Map columns</div>
+        <table class="importMappingTable">
+          <thead><tr><th>Excel Column</th><th></th><th>Field</th></tr></thead>
+          <tbody>${mappingRows}</tbody>
+        </table>
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Preview (first 3 rows)</div>
+        <div style="overflow-x:auto;margin-bottom:16px">
+          <table class="importPreviewTable">
+            <thead><tr>${previewHeaders}</tr></thead>
+            <tbody>${previewBodyRows}</tbody>
+          </table>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <button class="btnSecondary" onclick="_renderImportStep1()">← Back</button>
+          <button class="btnPrimary" id="importExecuteBtn" onclick="_executeImport()">Import ▶</button>
+        </div>`;
+    }
+
+    async function _executeImport() {
+      const btn = document.getElementById('importExecuteBtn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Importing…'; }
+      try {
+        const res = await fetch('/data/import/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileToken: importPreviewData.fileToken, mapping: importMapping })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          alert('Import failed: ' + data.error);
+          if (btn) { btn.disabled = false; btn.textContent = 'Import ▶'; }
+          return;
+        }
+        _renderImportStep3(data);
+      } catch (err) {
+        alert('Import error: ' + err.message);
+        if (btn) { btn.disabled = false; btn.textContent = 'Import ▶'; }
+      }
+    }
+
+    function _renderImportStep3(result) {
+      const { created, updated, skipped, errors } = result;
+      const total = created + updated;
+      const errorSection = errors.length ? `
+        <div style="margin-top:16px">
+          <div style="font-size:13px;font-weight:600;color:#8a4a18;margin-bottom:6px">⚠ ${errors.length} row${errors.length !== 1 ? 's' : ''} had errors:</div>
+          <div class="importErrorList"><ul style="margin:0;padding-left:18px">
+            ${errors.map(e => `<li>Row ${e.row} — ${escHtml(e.reason)}</li>`).join('')}
+          </ul></div>
+        </div>` : '';
+      _importBody().innerHTML = `
+        <div class="importResult">
+          <div class="importCount">✓ ${total} employee${total !== 1 ? 's' : ''} imported</div>
+          <div class="importBreakdown">${created} created · ${updated} updated · ${skipped} skipped</div>
+          ${errorSection}
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:16px">
+          <button class="btnPrimary" onclick="loadAll();_renderImportStep1()">Done</button>
+        </div>`;
+    }
+
+    async function _exportEmployees() {
+      try {
+        const res = await fetch('/data/export/employees');
+        if (!res.ok) { alert('Export failed'); return; }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'employees.xlsx';
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        alert('Export error: ' + err.message);
+      }
     }
 
     // ── Init ─────────────────────────────────────────────────────────────────

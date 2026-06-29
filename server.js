@@ -1,8 +1,198 @@
 const cds = require('@sap/cds');
 const express = require('express');
+const multer = require('multer');
+const XLSX = require('xlsx');
+
+// In-memory cache for parsed Excel rows, keyed by fileToken, TTL 10 min
+const fileCache = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of fileCache) {
+    if (v.expiresAt < now) fileCache.delete(k);
+  }
+}, 5 * 60 * 1000);
+
+function makeid() {
+  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+}
 
 cds.on('bootstrap', (app) => {
   app.use(express.json());
+
+  // ── Excel Import ──────────────────────────────────────────────────────────
+  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+  const FIELD_KEYWORDS = {
+    name:      ['name', '姓名', '员工姓名', 'full name', 'fullname'],
+    email:     ['email', 'mail', '邮箱', 'e-mail'],
+    seniority: ['seniority', 'level', 'grade', '级别', '职级'],
+    skills:    ['skills', 'skill', '技能', 'technologies', 'tech'],
+  };
+
+  function suggestField(header) {
+    const h = header.toLowerCase();
+    for (const [field, keywords] of Object.entries(FIELD_KEYWORDS)) {
+      if (keywords.some(kw => h.includes(kw))) return field;
+    }
+    return null;
+  }
+
+  app.post('/data/import/preview', upload.single('file'), (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+      const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+      if (!rows.length) return res.status(400).json({ error: 'Empty spreadsheet' });
+
+      const headers = rows[0].map(String);
+      const sampleRows = rows.slice(1, 6).map(r => headers.map((_, i) => String(r[i] ?? '')));
+
+      const suggestedMapping = {};
+      headers.forEach(h => { suggestedMapping[h] = suggestField(h); });
+
+      const token = makeid();
+      fileCache.set(token, { rows: rows.slice(1), headers, expiresAt: Date.now() + 10 * 60 * 1000 });
+
+      res.json({ fileToken: token, columns: headers, sampleRows, suggestedMapping });
+    } catch (err) {
+      console.error('Import preview error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  const SENIORITY_MAP = {
+    t1: 'T1', '1': 'T1', junior: 'T1', entry: 'T1',
+    t2: 'T2', '2': 'T2',
+    t3: 'T3', '3': 'T3', mid: 'T3', intermediate: 'T3',
+    t4: 'T4', '4': 'T4', senior: 'T4', expert: 'T4', lead: 'T4',
+  };
+
+  function normaliseSeniority(raw) {
+    if (!raw) return { value: 'T1', warning: null };
+    const str = String(raw).trim();
+    const mapped = SENIORITY_MAP[str.toLowerCase()];
+    if (mapped) return { value: mapped, warning: null };
+    // Keep T\d as-is but warn; anything else defaults to T1
+    if (/^T\d+$/i.test(str)) return { value: str.toUpperCase(), warning: `Unrecognised seniority "${str}", kept as-is` };
+    return { value: 'T1', warning: `Unrecognised seniority "${str}", defaulted to T1` };
+  }
+
+  function parseSkills(raw) {
+    if (!raw) return [];
+    return String(raw).split(/[,;]/).map(s => s.trim()).filter(Boolean).map(s => {
+      const [namePart, levelPart] = s.split(':');
+      const lvl = parseInt(levelPart);
+      return { name: namePart.trim().slice(0, 50), level: isNaN(lvl) ? 3 : Math.min(5, Math.max(1, lvl)) };
+    });
+  }
+
+  app.post('/data/import/execute', async (req, res) => {
+    try {
+      const { fileToken, mapping } = req.body;
+      if (!fileToken || !mapping) return res.status(400).json({ error: 'fileToken and mapping are required' });
+
+      const cached = fileCache.get(fileToken);
+      if (!cached) return res.status(404).json({ error: 'File token expired or not found. Please re-upload.' });
+
+      const { rows, headers } = cached;
+
+      const mappedFields = Object.values(mapping).filter(Boolean);
+      if (!mappedFields.includes('name') || !mappedFields.includes('email')) {
+        return res.status(400).json({ error: 'Mapping must include at least "name" and "email" columns.' });
+      }
+
+      const colIndex = {};
+      headers.forEach((h, i) => { if (mapping[h]) colIndex[mapping[h]] = i; });
+
+      let created = 0, updated = 0, skipped = 0;
+      const errors = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const rowNum = i + 2;
+        const name  = String(row[colIndex.name]  ?? '').trim();
+        const email = String(row[colIndex.email] ?? '').trim();
+
+        if (!name)  { errors.push({ row: rowNum, reason: 'Missing name' });  skipped++; continue; }
+        if (!email) { errors.push({ row: rowNum, reason: 'Missing email' }); skipped++; continue; }
+        if (!email.includes('@')) { errors.push({ row: rowNum, reason: 'Invalid email (no @)' }); skipped++; continue; }
+
+        const { value: seniority, warning: senWarning } = normaliseSeniority(row[colIndex.seniority] ?? '');
+        if (senWarning) errors.push({ row: rowNum, reason: senWarning });
+        const skillsRaw = colIndex.skills !== undefined ? row[colIndex.skills] : '';
+        const skillsList = parseSkills(skillsRaw);
+
+        const existing = await SELECT.one.from('resourceagent.Employees').where({ email });
+        let empId;
+        if (existing) {
+          await UPDATE('resourceagent.Employees').set({ name, seniority }).where({ email });
+          empId = existing.ID;
+          updated++;
+        } else {
+          empId = 'e' + Date.now() + i;
+          await INSERT.into('resourceagent.Employees').entries({ ID: empId, name, email, seniority });
+          created++;
+        }
+
+        for (const sk of skillsList) {
+          let skillRow = await SELECT.one.from('resourceagent.Skills').where({ name: sk.name });
+          if (!skillRow) {
+            const skillId = 's' + Date.now() + Math.random().toString(36).slice(2);
+            await INSERT.into('resourceagent.Skills').entries({ ID: skillId, name: sk.name });
+            skillRow = { ID: skillId };
+          }
+          const existingES = await SELECT.one.from('resourceagent.EmployeeSkills')
+            .where({ employeeId: empId, skillId: skillRow.ID });
+          if (existingES) {
+            await UPDATE('resourceagent.EmployeeSkills').set({ level: sk.level })
+              .where({ employeeId: empId, skillId: skillRow.ID });
+          } else {
+            await INSERT.into('resourceagent.EmployeeSkills')
+              .entries({ employeeId: empId, skillId: skillRow.ID, level: sk.level });
+          }
+        }
+      }
+
+      res.json({ created, updated, skipped, errors });
+    } catch (err) {
+      console.error('Import execute error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── Export ────────────────────────────────────────────────────────────────
+  app.get('/data/export/employees', async (_req, res) => {
+    try {
+      const [emps, allES, allSkills] = await Promise.all([
+        SELECT.from('resourceagent.Employees').orderBy('name'),
+        SELECT.from('resourceagent.EmployeeSkills'),
+        SELECT.from('resourceagent.Skills'),
+      ]);
+      const skillById = Object.fromEntries(allSkills.map(s => [s.ID, s.name]));
+      const skillsByEmp = {};
+      allES.forEach(es => {
+        if (!skillsByEmp[es.employeeId]) skillsByEmp[es.employeeId] = [];
+        skillsByEmp[es.employeeId].push(`${skillById[es.skillId] || es.skillId}:${es.level}`);
+      });
+
+      const rows = [['Name', 'Email', 'Level', 'Skills']];
+      emps.forEach(e => {
+        rows.push([e.name, e.email, e.seniority, (skillsByEmp[e.ID] || []).join(', ')]);
+      });
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Employees');
+      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', 'attachment; filename="employees.xlsx"');
+      res.send(buf);
+    } catch (err) {
+      console.error('Export error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
 
   // ── Agent chat ────────────────────────────────────────────────────────────
   app.post('/agent/chat', async (req, res) => {
