@@ -48,4 +48,12 @@ entity Assignments {
   endDate        : Date;
   employee       : Association to Employees on employee.ID = employeeId;
   project        : Association to Projects on project.ID = projectId;
+  skills         : Composition of many AssignmentSkills on skills.assignmentId = $self.ID;
+}
+
+entity AssignmentSkills {
+  key assignmentId : UUID;
+  key skillId      : UUID;
+  assignment       : Association to Assignments on assignment.ID = assignmentId;
+  skill            : Association to Skills on skill.ID = skillId;
 }

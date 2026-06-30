@@ -9,4 +9,5 @@ service ResourceService @(path: '/api') {
   entity EmployeeSkills as projection on resourceagent.EmployeeSkills;
   entity ProjectSkills  as projection on resourceagent.ProjectSkills;
   entity Assignments    as projection on resourceagent.Assignments;
+  entity AssignmentSkills as projection on resourceagent.AssignmentSkills;
 }

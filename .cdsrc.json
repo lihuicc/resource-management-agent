@@ -1,5 +1,8 @@
 {
   "features": {
     "live_reload": false
+  },
+  "server": {
+    "port": 4005
   }
 }

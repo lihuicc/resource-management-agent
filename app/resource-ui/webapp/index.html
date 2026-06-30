@@ -215,6 +215,17 @@
     .badge-T2 { background: #dbeafe; color: #3b82f6; }
     .badge-T3 { background: #fce7f3; color: #ec4899; }
     .badge-T4 { background: #d1fae5; color: #10b981; }
+
+    /* ── Skill Chip ── */
+    .skillChip {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 12px;
+      background: var(--mac-lilac);
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 500;
+    }
   </style>
   <style>
     /* ══ Blue-Yellow 主题
@@ -436,17 +447,19 @@
     let employeeSkillsMap = {};  // employeeId -> [{skillId, level}]
 
     async function loadAll() {
-      const [e, a, p, s, es] = await Promise.all([
+      const [e, a, p, s, es, as] = await Promise.all([
         fetch("/api/Employees?$orderby=name").then(r => r.json()),
         fetch("/api/Assignments").then(r => r.json()),
         fetch("/api/Projects?$orderby=name").then(r => r.json()),
         fetch("/api/Skills?$orderby=name").then(r => r.json()),
-        fetch("/api/EmployeeSkills").then(r => r.json())
+        fetch("/api/EmployeeSkills").then(r => r.json()),
+        fetch("/api/AssignmentSkills").then(r => r.json())
       ]);
       employees   = e.value || [];
       assignments = a.value || [];
       projects    = p.value || [];
       skills      = s.value || [];
+      assignmentSkills = as.value || [];
       employeeSkillsMap = {};
       (es.value || []).forEach(row => {
         if (!employeeSkillsMap[row.employeeId]) employeeSkillsMap[row.employeeId] = [];
@@ -685,17 +698,28 @@
                       <th style="padding:5px 8px;text-align:left;color:#555">Level</th>
                       <th style="padding:5px 8px;text-align:left;color:#555">Start</th>
                       <th style="padding:5px 8px;text-align:left;color:#555">End</th>
+                      <th style="padding:5px 8px;text-align:left;color:#555">Skills Used</th>
                       <th style="padding:5px 8px"></th>
                     </tr></thead>
                     <tbody>${projAssignments.map(a => {
                       const emp = employees.find(e => e.ID === a.employeeId);
+                      const asSkills = assignmentSkills.filter(as => as.assignmentId === a.ID);
+                      const skillNames = asSkills.map(as => {
+                        const skill = skills.find(s => s.ID === as.skillId);
+                        return skill?.name || as.skillId;
+                      });
+                      const skillChips = skillNames.length
+                        ? skillNames.map(sn => `<span class="skillChip">${escHtml(sn)}</span>`).join(' ')
+                        : '<span style="color:#aaa">—</span>';
                       return `<tr style="border-bottom:1px solid #eee">
                         <td style="padding:5px 8px">${emp?.name || a.employeeId}</td>
                         <td style="padding:5px 8px"><span class="empBadge badge-${emp?.seniority}">${emp?.seniority || '—'}</span></td>
                         <td style="padding:5px 8px">${a.startDate}</td>
                         <td style="padding:5px 8px">${a.endDate}</td>
+                        <td style="padding:5px 8px">${skillChips}</td>
                         <td style="padding:5px 8px">
-                          <button class="btnIcon" title="Edit" onclick="openForm('assignment','${a.ID}')">✏️</button>
+                          <button class="btnIcon" title="Edit Assignment" onclick="openForm('assignment','${a.ID}')">✏️</button>
+                          <button class="btnIcon" title="Edit Skills" onclick="event.stopPropagation();editAssignmentSkills('${a.ID}')">🏷️</button>
                           <button class="btnIcon" title="Delete" onclick="deleteRecord('Assignments','${a.ID}')">🗑️</button>
                         </td>
                       </tr>`;
@@ -780,7 +804,7 @@
           </div>
         </div>
         <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px">Skills</div>
-        <div style="max-height:220px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:5px">
+        <div style="max-height:220px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:5px;margin-bottom:16px">
           <table style="width:100%;border-collapse:collapse;font-size:13px">
             <thead><tr style="background:#f5f5f5">
               <th style="padding:6px 8px;text-align:left;font-weight:600;color:#555">Skill</th>
@@ -788,7 +812,35 @@
             </tr></thead>
             <tbody>${skillRows}</tbody>
           </table>
-        </div>`;
+        </div>
+        ${rec ? `
+        <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;margin-top:16px">Assignment History</div>
+        <div style="max-height:200px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:5px;padding:8px">
+          ${(() => {
+            const empAssignments = assignments.filter(a => a.employeeId === rec.ID);
+            if (!empAssignments.length) return '<span style="font-size:12px;color:#aaa">No assignments yet</span>';
+            return empAssignments.map(a => {
+              const proj = projects.find(p => p.ID === a.projectId);
+              const asSkills = assignmentSkills.filter(as => as.assignmentId === a.ID);
+              const skillNames = asSkills.map(as => {
+                const skill = skills.find(s => s.ID === as.skillId);
+                return skill?.name || as.skillId;
+              });
+              const skillChips = skillNames.length
+                ? skillNames.map(sn => `<span class="skillChip">${escHtml(sn)}</span>`).join(' ')
+                : '<span style="color:#aaa;font-size:11px">(no skills recorded)</span>';
+              return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #eee">
+                <div style="flex:1">
+                  <div style="font-weight:600;font-size:13px">${escHtml(proj?.name || a.projectId)}</div>
+                  <div style="color:#888;font-size:11px">${a.startDate} – ${a.endDate}</div>
+                </div>
+                <div style="flex:2;display:flex;align-items:center;gap:4px;flex-wrap:wrap">${skillChips}</div>
+                <button class="btnIcon" style="font-size:14px" onclick="event.stopPropagation();editAssignmentSkills('${a.ID}')" title="Edit skills">🏷️</button>
+              </div>`;
+            }).join('');
+          })()}
+        </div>
+        ` : ''}`;
       } else if (type === "project") {
         return `<div class="formGrid" style="padding:4px 0">
           <div class="formGroup full"><label>Name</label><input id="f_name" value="${rec?.name||''}"/></div>
@@ -879,6 +931,81 @@
       const res = await fetch(`/data/${entity}/${id}`, { method: "DELETE" });
       if (res.ok) { await loadAll(); renderTab(currentTab); }
       else { const err = await res.json(); alert("Error: " + (err.error?.message || JSON.stringify(err))); }
+    }
+
+    // ── Edit Assignment Skills ────────────────────────────────────────────────
+    let editingAssignmentId = null;
+
+    function editAssignmentSkills(assignmentId) {
+      editingAssignmentId = assignmentId;
+      const assignment = assignments.find(a => a.ID === assignmentId);
+      if (!assignment) return;
+
+      const emp = employees.find(e => e.ID === assignment.employeeId);
+      const proj = projects.find(p => p.ID === assignment.projectId);
+      const asSkills = assignmentSkills.filter(as => as.assignmentId === assignmentId);
+      const selectedSkillIds = asSkills.map(as => as.skillId);
+
+      const skillCheckboxes = skills.map(s => {
+        const checked = selectedSkillIds.includes(s.ID);
+        return `<div style="padding:4px 0">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" data-asskill-id="${s.ID}" ${checked ? 'checked' : ''}>
+            <span>${escHtml(s.name)}</span>
+          </label>
+        </div>`;
+      }).join('');
+
+      document.getElementById('formTitle').textContent = 'Edit Assignment Skills';
+      document.getElementById('formBody').innerHTML = `
+        <div style="margin-bottom:12px">
+          <div style="font-weight:600;margin-bottom:4px">${escHtml(emp?.name || '')}</div>
+          <div style="color:var(--muted);font-size:12px">${escHtml(proj?.name || '')}</div>
+          <div style="color:var(--muted);font-size:11px">${assignment.startDate} – ${assignment.endDate}</div>
+        </div>
+        <div style="font-weight:600;font-size:12px;margin-bottom:8px">Skills Used</div>
+        <div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:8px">
+          ${skillCheckboxes}
+        </div>
+      `;
+
+      // Replace footer buttons temporarily
+      const footer = document.querySelector('#formModal .modalFooter');
+      if (footer) {
+        footer.innerHTML = `
+          <button class="btnSecondary" onclick="closeForm()">Cancel</button>
+          <button class="btnPrimary" onclick="saveAssignmentSkills()">Save</button>
+        `;
+      }
+
+      document.getElementById('formModal').classList.add('open');
+    }
+
+    async function saveAssignmentSkills() {
+      const selectedSkillIds = [];
+      document.querySelectorAll('[data-asskill-id]').forEach(cb => {
+        if (cb.checked) selectedSkillIds.push(cb.dataset.asskillId);
+      });
+
+      try {
+        const res = await fetch(`/data/AssignmentSkills/${editingAssignmentId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ skillIds: selectedSkillIds })
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          alert('Error: ' + (err.error || 'Unknown error'));
+          return;
+        }
+
+        closeForm();
+        await loadAll();
+        renderTab(currentTab);
+      } catch (err) {
+        alert('Save failed: ' + err.message);
+      }
     }
 
     // ── Import / Export tab ───────────────────────────────────────────────────
