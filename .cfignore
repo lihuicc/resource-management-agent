@@ -1,0 +1,11 @@
+node_modules/
+.resource-management-agent_mta_build_tmp/
+mta_archives/
+*.mtar
+gen/
+.git/
+doc/
+default-env.json
+.env
+db/data.db
+*.sqlite
