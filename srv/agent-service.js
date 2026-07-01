@@ -242,6 +242,31 @@ const TOOLS = [
       },
       required: ['employeeName']
     }
+  },
+  {
+    name: 'getAssignmentSkills',
+    description: 'Get the skills recorded for a specific assignment by employee and project name.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        employeeName: { type: 'string', description: 'Full or partial name of the employee' },
+        projectName:  { type: 'string', description: 'Full or partial name of the project' }
+      },
+      required: ['employeeName', 'projectName']
+    }
+  },
+  {
+    name: 'setAssignmentSkills',
+    description: 'Set (full-replace) the skills for an assignment. Used to record or correct which skills were actually used.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        employeeName: { type: 'string', description: 'Full or partial name of the employee' },
+        projectName:  { type: 'string', description: 'Full or partial name of the project' },
+        skillNames:   { type: 'array', items: { type: 'string' }, description: 'Skill names to assign, e.g. ["React", "Node.js"]' }
+      },
+      required: ['employeeName', 'projectName', 'skillNames']
+    }
   }
 ];
 
@@ -286,12 +311,26 @@ async function getEmployeeProfile({ employeeName }) {
     ? await SELECT.from('resourceagent.Projects').where({ ID: projectIds })
     : [];
 
-  const assignmentList = assignments.map(a => ({
-    project: projects.find(p => p.ID === a.projectId)?.name || a.projectId,
-    status:  projects.find(p => p.ID === a.projectId)?.status,
-    startDate: a.startDate,
-    endDate:   a.endDate
-  }));
+  // Get assignment skills
+  const assignmentIds = assignments.map(a => a.ID);
+  const allAssignmentSkills = assignmentIds.length
+    ? await SELECT.from('resourceagent.AssignmentSkills').where({ assignmentId: assignmentIds })
+    : [];
+
+  const assignmentList = assignments.map(a => {
+    const asSkills = allAssignmentSkills.filter(as => as.assignmentId === a.ID);
+    const skillNames = asSkills.map(as =>
+      skills.find(s => s.ID === as.skillId)?.name || as.skillId
+    );
+
+    return {
+      project: projects.find(p => p.ID === a.projectId)?.name || a.projectId,
+      status:  projects.find(p => p.ID === a.projectId)?.status,
+      startDate: a.startDate,
+      endDate:   a.endDate,
+      skillsUsed: skillNames
+    };
+  });
 
   return { ...emp, skills: skillList, assignments: assignmentList };
 }
@@ -540,6 +579,106 @@ async function deleteEmployee({ employeeName }) {
   return { success: true, message: `Employee "${emp.name}" and all their assignments have been deleted` };
 }
 
+async function getAssignmentSkills({ employeeName, projectName }) {
+  // Fuzzy match employee and project
+  const employees = await SELECT.from('resourceagent.Employees')
+    .where(`lower(name) like lower('%${employeeName}%')`);
+  if (!employees.length) return { error: `No employee found matching "${employeeName}"` };
+
+  const projects = await SELECT.from('resourceagent.Projects')
+    .where(`lower(name) like lower('%${projectName}%')`);
+  if (!projects.length) return { error: `No project found matching "${projectName}"` };
+
+  const emp = employees[0];
+  const proj = projects[0];
+
+  // Find the assignment
+  const assignments = await SELECT.from('resourceagent.Assignments')
+    .where({ employeeId: emp.ID, projectId: proj.ID });
+  if (!assignments.length) return { error: `No assignment found for ${emp.name} on ${proj.name}` };
+
+  const assignment = assignments[0];
+
+  // Get assignment skills
+  const assignmentSkills = await SELECT.from('resourceagent.AssignmentSkills')
+    .where({ assignmentId: assignment.ID });
+
+  // Get skill details with employee levels
+  const skillIds = assignmentSkills.map(as => as.skillId);
+  const skills = skillIds.length
+    ? await SELECT.from('resourceagent.Skills').where({ ID: skillIds })
+    : [];
+  const employeeSkills = skillIds.length
+    ? await SELECT.from('resourceagent.EmployeeSkills')
+        .where({ employeeId: emp.ID, skillId: skillIds })
+    : [];
+
+  const skillList = assignmentSkills.map(as => {
+    const skill = skills.find(s => s.ID === as.skillId);
+    const empSkill = employeeSkills.find(es => es.skillId === as.skillId);
+    return {
+      skillId: as.skillId,
+      name: skill?.name || as.skillId,
+      employeeLevel: empSkill?.level || null
+    };
+  });
+
+  return {
+    employee: emp.name,
+    project: proj.name,
+    startDate: assignment.startDate,
+    endDate: assignment.endDate,
+    skills: skillList
+  };
+}
+
+async function setAssignmentSkills({ employeeName, projectName, skillNames }) {
+  // Fuzzy match employee and project
+  const employees = await SELECT.from('resourceagent.Employees')
+    .where(`lower(name) like lower('%${employeeName}%')`);
+  if (!employees.length) return { error: `No employee found matching "${employeeName}"` };
+
+  const projects = await SELECT.from('resourceagent.Projects')
+    .where(`lower(name) like lower('%${projectName}%')`);
+  if (!projects.length) return { error: `No project found matching "${projectName}"` };
+
+  const emp = employees[0];
+  const proj = projects[0];
+
+  // Find assignment
+  const assignments = await SELECT.from('resourceagent.Assignments')
+    .where({ employeeId: emp.ID, projectId: proj.ID });
+  if (!assignments.length) return { error: `No assignment found for ${emp.name} on ${proj.name}` };
+
+  const assignment = assignments[0];
+
+  // Resolve skill names to IDs (create if needed)
+  const skillIds = [];
+  for (const skillName of skillNames) {
+    let skill = await SELECT.one.from('resourceagent.Skills')
+      .where(`lower(name) = lower('${skillName}')`);
+    if (!skill) {
+      const skillId = 's' + Date.now() + Math.random().toString(36).slice(2);
+      await INSERT.into('resourceagent.Skills').entries({ ID: skillId, name: skillName });
+      skill = { ID: skillId };
+    }
+    skillIds.push(skill.ID);
+  }
+
+  // Full-replace assignment skills
+  await DELETE.from('resourceagent.AssignmentSkills').where({ assignmentId: assignment.ID });
+  if (skillIds.length) {
+    await INSERT.into('resourceagent.AssignmentSkills').entries(
+      skillIds.map(skillId => ({ assignmentId: assignment.ID, skillId }))
+    );
+  }
+
+  return {
+    success: true,
+    message: `Set ${skillIds.length} skills for ${emp.name} on ${proj.name}: ${skillNames.join(', ')}`
+  };
+}
+
 // ── Tool dispatcher ───────────────────────────────────────────────────────────
 
 async function dispatchTool(name, input) {
@@ -559,6 +698,8 @@ async function dispatchTool(name, input) {
     case 'updateProject':            return updateProject(input);
     case 'createEmployee':           return createEmployee(input);
     case 'deleteEmployee':           return deleteEmployee(input);
+    case 'getAssignmentSkills':      return getAssignmentSkills(input);
+    case 'setAssignmentSkills':      return setAssignmentSkills(input);
     default: return { error: `Unknown tool: ${name}` };
   }
 }

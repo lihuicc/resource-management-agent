@@ -229,6 +229,12 @@ cds.on('bootstrap', (app) => {
   app.delete('/data/Employees/:id', async (req, res) => {
     try {
       const id = req.params.id;
+      const assignments = await SELECT.from('resourceagent.Assignments')
+        .columns('ID').where({ employeeId: id });
+      const assignmentIds = assignments.map(a => a.ID);
+      if (assignmentIds.length) {
+        await DELETE.from('resourceagent.AssignmentSkills').where({ assignmentId: assignmentIds });
+      }
       await DELETE.from('resourceagent.EmployeeSkills').where({ employeeId: id });
       await DELETE.from('resourceagent.Assignments').where({ employeeId: id });
       await DELETE.from('resourceagent.Employees').where({ ID: id });
@@ -314,8 +320,33 @@ cds.on('bootstrap', (app) => {
 
   app.delete('/data/Assignments/:id', async (req, res) => {
     try {
-      await DELETE.from('resourceagent.Assignments').where({ ID: req.params.id });
+      const id = req.params.id;
+      await DELETE.from('resourceagent.AssignmentSkills').where({ assignmentId: id });
+      await DELETE.from('resourceagent.Assignments').where({ ID: id });
       res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // ── Assignment Skills ─────────────────────────────────────────────────
+  app.post('/data/AssignmentSkills/:assignmentId', async (req, res) => {
+    try {
+      const { assignmentId } = req.params;
+      const { skillIds } = req.body; // ["s1", "s4", "s10"]
+      await DELETE.from('resourceagent.AssignmentSkills').where({ assignmentId });
+      if (skillIds && skillIds.length) {
+        await INSERT.into('resourceagent.AssignmentSkills').entries(
+          skillIds.map(skillId => ({ assignmentId, skillId }))
+        );
+      }
+      res.json({ success: true, count: skillIds?.length || 0 });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.get('/data/AssignmentSkills/:assignmentId', async (req, res) => {
+    try {
+      const rows = await SELECT.from('resourceagent.AssignmentSkills')
+        .where({ assignmentId: req.params.assignmentId });
+      res.json(rows);
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
