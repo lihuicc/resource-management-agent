@@ -1,0 +1,97 @@
+_schema-version: "3.3.0"
+ID: resource-management-agent
+description: Resource Management Agent on SAP BTP
+version: 1.0.4
+
+parameters:
+  enable-parallel-deployments: true
+
+build-parameters:
+  before-all:
+    - builder: custom
+      commands:
+        - npm install --prefer-offline
+        - npx cds build --production
+        - node -e "const fs=require('fs');const path=require('path');function cp(src,dst){fs.mkdirSync(dst,{recursive:true});fs.readdirSync(src).forEach(f=>{const s=path.join(src,f),d=path.join(dst,f);fs.statSync(s).isDirectory()?cp(s,d):fs.copyFileSync(s,d);})}cp('app','gen/srv/app')"
+
+modules:
+
+  # ─── 1. CAP Node.js 后端服务 ──────────────────────────
+  - name: resource-management-srv
+    type: nodejs
+    path: gen/srv
+    build-parameters:
+      ignore: ["node_modules/"]
+    parameters:
+      buildpack: nodejs_buildpack
+      memory: 512M
+      disk-quota: 512M
+    properties:
+      NODE_ENV: production
+      AICORE_RESOURCE_GROUP: default
+      ANTHROPIC_BASE_URL: https://api.ai.intprod-eu12.eu-central-1.aws.ml.hana.ondemand.com/v2/inference/deployments/dc8d78435d006caf
+    requires:
+      - name: resource-management-xsuaa
+      - name: resource-management-aicore
+      - name: resource-management-db
+    provides:
+      - name: resource-management-srv-api
+        properties:
+          srv-url: ${default-url}
+
+  # ─── 2. HANA DB 部署器 ────────────────────────────────
+  - name: resource-management-db-deployer
+    type: hdb
+    path: gen/db
+    build-parameters:
+      ignore: ["node_modules/"]
+    parameters:
+      buildpack: nodejs_buildpack
+      memory: 256M
+      disk-quota: 512M
+    requires:
+      - name: resource-management-db
+
+  # ─── 3. App Router ────────────────────────────────────
+  - name: resource-management-approuter
+    type: approuter.nodejs
+    path: approuter
+    build-parameters:
+      ignore: ["node_modules/"]
+    parameters:
+      memory: 128M
+      disk-quota: 256M
+    requires:
+      - name: resource-management-xsuaa
+      - name: resource-management-srv-api
+        group: destinations
+        properties:
+          name: resource-management-srv
+          url: ~{srv-url}
+          forwardAuthToken: true
+
+resources:
+
+  # ─── HANA Cloud HDI Container ─────────────────────────
+  - name: resource-management-db
+    type: com.sap.xs.hdi-container
+    parameters:
+      service: hana
+      service-plan: hdi-shared
+
+  # ─── XSUAA ────────────────────────────────────────────
+  - name: resource-management-xsuaa
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: xsuaa
+      service-plan: application
+      path: ./xs-security.json
+      config:
+        xsappname: resource-management-agent
+        tenant-mode: dedicated
+
+  # ─── SAP AI Core ──────────────────────────────────────
+  - name: resource-management-aicore
+    type: org.cloudfoundry.existing-service
+    parameters:
+      service-name: aicore-rm-agent

@@ -1,0 +1,32 @@
+{
+  "welcomeFile": "/resource-ui/webapp/index.html",
+  "authenticationMethod": "route",
+  "routes": [
+    {
+      "source": "^/api/(.*)",
+      "target": "/api/$1",
+      "destination": "resource-management-srv",
+      "authenticationType": "xsuaa"
+    },
+    {
+      "source": "^/data/(.*)",
+      "target": "/data/$1",
+      "destination": "resource-management-srv",
+      "authenticationType": "xsuaa",
+      "csrfProtection": false
+    },
+    {
+      "source": "^/agent/(.*)",
+      "target": "/agent/$1",
+      "destination": "resource-management-srv",
+      "authenticationType": "xsuaa",
+      "csrfProtection": false
+    },
+    {
+      "source": "^/(.*)",
+      "target": "/$1",
+      "destination": "resource-management-srv",
+      "authenticationType": "xsuaa"
+    }
+  ]
+}
