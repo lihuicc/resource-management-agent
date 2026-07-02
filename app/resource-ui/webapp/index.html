@@ -116,6 +116,7 @@
     }
     .gantt .bar-wrapper.status-active { --g-bar-color: #86efac; --g-bar-border: #86efac; }
     .gantt .bar-wrapper.status-booked { --g-bar-color: #f9a8d4; --g-bar-border: #f9a8d4; }
+    .gantt .bar-wrapper.status-free   { --g-bar-color: #ddd6fe; --g-bar-border: #ddd6fe; opacity: 0.6; }
     .gantt .bar-label { fill: #4a3f5c !important; font-size: 11px !important; font-weight: 600 !important; }
     .gantt .bar-label.big { fill: #4a3f5c !important; }
 
@@ -275,6 +276,7 @@
     }
     .gantt .bar-wrapper.status-active { --g-bar-color: #437FC7 !important; --g-bar-border: #437FC7 !important; }
     .gantt .bar-wrapper.status-booked { --g-bar-color: #F3F33B !important; --g-bar-border: #F3F33B !important; }
+    .gantt .bar-wrapper.status-free   { --g-bar-color: #4a6fa5 !important; --g-bar-border: #4a6fa5 !important; opacity: 0.35; }
     .gantt .bar-label { fill: #fff !important; font-size: 11px !important; font-weight: 600 !important; }
     .gantt .bar-wrapper.status-booked .bar-label { fill: #5a4a00 !important; }
 
@@ -426,11 +428,72 @@
     </div>
   </div>
 
+  <!-- ── Confirm Dialog ── -->
+  <div class="modal" id="confirmModal">
+    <div class="modalBox" style="width:380px">
+      <div class="modalHeader">
+        <span class="modalTitle" id="confirmTitle">Confirm</span>
+        <button class="modalClose" onclick="_confirmResolve(false)">×</button>
+      </div>
+      <div class="modalBody" style="padding:20px 22px;font-size:14px;color:var(--text)" id="confirmMessage"></div>
+      <div class="modalFooter">
+        <button class="btnSecondary" onclick="_confirmResolve(false)">Cancel</button>
+        <button class="btnPrimary" id="confirmOkBtn" onclick="_confirmResolve(true)">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Alert Dialog ── -->
+  <div class="modal" id="alertModal">
+    <div class="modalBox" style="width:380px">
+      <div class="modalHeader">
+        <span class="modalTitle" id="alertTitle">Notice</span>
+        <button class="modalClose" onclick="_alertResolve()">×</button>
+      </div>
+      <div class="modalBody" style="padding:20px 22px;font-size:14px;color:var(--text)" id="alertMessage"></div>
+      <div class="modalFooter">
+        <button class="btnPrimary" onclick="_alertResolve()">OK</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     let employees = [], assignments = [], projects = [], skills = [];
     let conversationHistory = [];
     let currentTab = 'employees';
     let formMode = null, formRecord = null;
+
+    // ── Custom confirm/alert dialogs ──────────────────────────────────────────
+    let _confirmResolve = () => {};
+    let _alertResolve   = () => {};
+
+    function _confirm(message, title = 'Confirm', okLabel = 'Delete', okDanger = true) {
+      return new Promise(resolve => {
+        document.getElementById('confirmTitle').textContent   = title;
+        document.getElementById('confirmMessage').textContent = message;
+        const okBtn = document.getElementById('confirmOkBtn');
+        okBtn.textContent = okLabel;
+        okBtn.style.background = okDanger ? '#dc2626' : '';
+        okBtn.style.borderColor = okDanger ? '#dc2626' : '';
+        document.getElementById('confirmModal').classList.add('open');
+        _confirmResolve = (result) => {
+          document.getElementById('confirmModal').classList.remove('open');
+          resolve(result);
+        };
+      });
+    }
+
+    function _alert(message, title = 'Error') {
+      return new Promise(resolve => {
+        document.getElementById('alertTitle').textContent   = title;
+        document.getElementById('alertMessage').textContent = message;
+        document.getElementById('alertModal').classList.add('open');
+        _alertResolve = () => {
+          document.getElementById('alertModal').classList.remove('open');
+          resolve();
+        };
+      });
+    }
 
     let currentViewOffset = 2;
 
@@ -471,8 +534,12 @@
     // ── Gantt ─────────────────────────────────────────────────────────────────
     function renderGantt() {
       const tasks = [];
+      const today = new Date().toISOString().split('T')[0];
+      const placeholderEnd = new Date(new Date().setDate(new Date().getDate() + 1)).toISOString().split('T')[0];
       employees.forEach(emp => {
-        assignments.filter(a => a.employeeId === emp.ID).forEach(a => {
+        const empAsgns = assignments.filter(a => a.employeeId === emp.ID);
+        let hasTask = false;
+        empAsgns.forEach(a => {
           const proj = projects.find(p => p.ID === a.projectId);
           if (!proj || proj.status === 'open') return;
           const start = a.startDate;
@@ -486,7 +553,18 @@
             progress: 0,
             custom_class: 'status-' + proj.status
           });
+          hasTask = true;
         });
+        if (!hasTask) {
+          tasks.push({
+            id: 'free-' + emp.ID,
+            name: emp.name + ' — Free',
+            start: today,
+            end: placeholderEnd,
+            progress: 0,
+            custom_class: 'status-free'
+          });
+        }
       });
 
       const ganttContent = document.getElementById('ganttContent');
@@ -899,7 +977,7 @@
       const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const resData = res.headers.get("content-type")?.includes("json") ? await res.json() : {};
       if (!res.ok) {
-        alert("Error: " + (resData.error?.message || JSON.stringify(resData)));
+        await _alert("Error: " + (resData.error?.message || JSON.stringify(resData)));
         return;
       }
 
@@ -927,10 +1005,10 @@
     }
 
     async function deleteRecord(entity, id) {
-      if (!confirm("Delete this record?")) return;
+      if (!await _confirm("This record will be permanently deleted.", "Delete Record")) return;
       const res = await fetch(`/data/${entity}/${id}`, { method: "DELETE" });
       if (res.ok) { await loadAll(); renderTab(currentTab); }
-      else { const err = await res.json(); alert("Error: " + (err.error?.message || JSON.stringify(err))); }
+      else { const err = await res.json(); await _alert("Error: " + (err.error?.message || JSON.stringify(err))); }
     }
 
     // ── Edit Assignment Skills ────────────────────────────────────────────────
@@ -996,7 +1074,7 @@
 
         if (!res.ok) {
           const err = await res.json();
-          alert('Error: ' + (err.error || 'Unknown error'));
+          await _alert('Error: ' + (err.error || 'Unknown error'));
           return;
         }
 
@@ -1004,7 +1082,7 @@
         await loadAll();
         renderTab(currentTab);
       } catch (err) {
-        alert('Save failed: ' + err.message);
+        await _alert('Save failed: ' + err.message);
       }
     }
 
@@ -1050,12 +1128,12 @@
       try {
         const res = await fetch('/data/import/preview', { method: 'POST', body: form });
         const data = await res.json();
-        if (!res.ok) { alert('Preview failed: ' + data.error); _renderImportStep1(); return; }
+        if (!res.ok) { await _alert('Preview failed: ' + data.error); _renderImportStep1(); return; }
         importPreviewData = data;
         importMapping = { ...data.suggestedMapping };
         _renderImportStep2();
       } catch (err) {
-        alert('Upload error: ' + err.message);
+        await _alert('Upload error: ' + err.message);
         _renderImportStep1();
       }
     }
@@ -1113,13 +1191,13 @@
         });
         const data = await res.json();
         if (!res.ok) {
-          alert('Import failed: ' + data.error);
+          await _alert('Import failed: ' + data.error);
           if (btn) { btn.disabled = false; btn.textContent = 'Import ▶'; }
           return;
         }
         _renderImportStep3(data);
       } catch (err) {
-        alert('Import error: ' + err.message);
+        await _alert('Import error: ' + err.message);
         if (btn) { btn.disabled = false; btn.textContent = 'Import ▶'; }
       }
     }
@@ -1148,7 +1226,7 @@
     async function _exportEmployees() {
       try {
         const res = await fetch('/data/export/employees');
-        if (!res.ok) { alert('Export failed'); return; }
+        if (!res.ok) { await _alert('Export failed'); return; }
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -1157,7 +1235,7 @@
         a.click();
         URL.revokeObjectURL(url);
       } catch (err) {
-        alert('Export error: ' + err.message);
+        await _alert('Export error: ' + err.message);
       }
     }
 

@@ -70,7 +70,7 @@ sap.ui.define([
 
     _loadAll: function () {
       Promise.all([
-        fetch("/api/Employees?$orderby=name").then(r => r.json()),
+        fetch("/api/Employees?$orderby=name&$top=500").then(r => r.json()),
         fetch("/api/Assignments").then(r => r.json()),
         fetch("/api/Projects").then(r => r.json())
       ]).then(([emp, asgn, proj]) => {
@@ -178,7 +178,7 @@ sap.ui.define([
           } else {
             this._conversationHistory = data.messages || [];
             this._appendMessage(data.reply, "agent");
-            if (data.toolsUsed && data.toolsUsed.includes("createAssignment")) {
+            if (data.toolsUsed && data.toolsUsed.some(t => ["createAssignment","deleteAssignment","createEmployee","deleteEmployee"].includes(t))) {
               this._loadAll();
             }
           }

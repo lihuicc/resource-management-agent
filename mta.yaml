@@ -1,7 +1,7 @@
 _schema-version: "3.3.0"
 ID: resource-management-agent
 description: Resource Management Agent on SAP BTP
-version: 1.0.4
+version: 1.1.1
 
 parameters:
   enable-parallel-deployments: true
@@ -29,6 +29,7 @@ modules:
     properties:
       NODE_ENV: production
       AICORE_RESOURCE_GROUP: default
+      AICORE_MODEL: anthropic--claude-4.5-sonnet
       ANTHROPIC_BASE_URL: https://api.ai.intprod-eu12.eu-central-1.aws.ml.hana.ondemand.com/v2/inference/deployments/dc8d78435d006caf
     requires:
       - name: resource-management-xsuaa

@@ -17,9 +17,13 @@
   },
   "scripts": {
     "start": "cds-serve",
-    "dev": "cds-serve"
+    "dev": "cds-serve",
+    "build:mta": "mbt build -t ./"
   },
   "cds": {
+    "query": {
+      "limit": { "default": 200, "max": 1000 }
+    },
     "requires": {
       "db": {
         "kind": "sqlite",

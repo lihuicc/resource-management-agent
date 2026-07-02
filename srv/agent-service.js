@@ -5,22 +5,22 @@ const Anthropic = require('@anthropic-ai/sdk');
 
 let _client = null;
 let _tokenExpiresAt = 0;
+let _accessToken = null;
 
 async function getClient() {
   const now = Date.now();
-  // 本地开发：VCAP_SERVICES 不存在，直接用 Anthropic SDK
   if (!process.env.VCAP_SERVICES) {
     if (!_client) {
       _client = new Anthropic({
-        apiKey:   process.env.ANTHROPIC_API_KEY || 'dummy-key',
-        baseURL:  process.env.ANTHROPIC_BASE_URL || 'http://localhost:6655/anthropic'
+        apiKey:  process.env.ANTHROPIC_API_KEY || 'dummy-key',
+        baseURL: process.env.ANTHROPIC_BASE_URL || 'http://localhost:6655/anthropic'
       });
     }
     return _client;
   }
 
-  // BTP 生产：用 client credentials 换取 Bearer token（11小时缓存）
-  if (!_client || now >= _tokenExpiresAt) {
+  // BTP: refresh token if expired
+  if (!_accessToken || now >= _tokenExpiresAt) {
     const vcap  = JSON.parse(process.env.VCAP_SERVICES);
     const creds = vcap.aicore[0].credentials;
     const params = new URLSearchParams({
@@ -34,17 +34,30 @@ async function getClient() {
       body:    params.toString()
     });
     const { access_token } = await tokenRes.json();
-    _tokenExpiresAt = now + 11 * 60 * 60 * 1000;  // 11小时后刷新
-    _client = new Anthropic({
-      apiKey:         'dummy',
-      baseURL:        process.env.ANTHROPIC_BASE_URL,
-      defaultHeaders: {
-        'Authorization':    `Bearer ${access_token}`,
-        'AI-Resource-Group': process.env.AICORE_RESOURCE_GROUP || 'default'
-      }
-    });
+    _accessToken    = access_token;
+    _tokenExpiresAt = now + 11 * 60 * 60 * 1000;
   }
-  return _client;
+  return null;
+}
+
+// AI Core requires POST to /invoke, not /v1/messages
+async function callAICore(body) {
+  const baseURL = process.env.ANTHROPIC_BASE_URL.replace(/\/$/, '');
+  const url = `${baseURL}/invoke`;
+  const res = await fetch(url, {
+    method:  'POST',
+    headers: {
+      'Content-Type':      'application/json',
+      'Authorization':     `Bearer ${_accessToken}`,
+      'AI-Resource-Group': process.env.AICORE_RESOURCE_GROUP || 'default'
+    },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`${res.status} ${text}`);
+  }
+  return res.json();
 }
 
 const SYSTEM_PROMPT = `You are a Resource Management Assistant for a project team of ~70 employees.
@@ -710,15 +723,16 @@ async function runAgent(userMessage, conversationHistory = []) {
   const messages = [...conversationHistory, { role: 'user', content: userMessage }];
   const toolsUsed = [];
   const client = await getClient();
+  const isBTP = !!process.env.VCAP_SERVICES;
+  const model = isBTP
+    ? (process.env.AICORE_MODEL || 'anthropic--claude-4.5-sonnet')
+    : 'claude-sonnet-4-6';
 
   while (true) {
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
-      system: SYSTEM_PROMPT,
-      tools: TOOLS,
-      messages
-    });
+    const reqBody = { max_tokens: 4096, system: SYSTEM_PROMPT, tools: TOOLS, messages, anthropic_version: 'bedrock-2023-05-31' };
+    const response = isBTP
+      ? await callAICore(reqBody)
+      : await client.messages.create({ model, ...reqBody, anthropic_version: undefined });
 
     messages.push({ role: 'assistant', content: response.content });
 
